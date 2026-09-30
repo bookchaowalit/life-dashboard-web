@@ -51,6 +51,7 @@ export const BACKENDS: Record<string, Backend> = {
       /^v1\/health$/, /^v1\/registry$/, /^v1\/artifacts$/, new RegExp(`^v1/artifacts/${SHA}(?:/lineage|/content)?$`),
       /^v1\/projects$/, new RegExp(`^v1/projects/${SLUG}(?:/(?:review|assign|package))?$`), /^v1\/send$/,
       /^v1\/flows$/, new RegExp(`^v1/flows/${FLOW}(?:/resume)?$`),
+      /^v1\/formats$/, /^v1\/runtimes$/, /^v1\/path$/,
     ],
     serverHeaders: (env) => ({
       'X-Hub-Client': 'console',

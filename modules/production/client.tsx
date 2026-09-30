@@ -23,8 +23,9 @@ import {
   type Registry,
   type SendOption,
 } from './api';
+import ConversionRoutes from './routes';
 
-type Tab = 'library' | 'projects' | 'flows';
+type Tab = 'library' | 'projects' | 'flows' | 'routes';
 
 const message = (cause: unknown) => (cause instanceof HubError ? cause.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด');
 
@@ -585,9 +586,11 @@ export default function ConsoleClient() {
         <button type="button" role="tab" aria-selected={tab === 'library'} onClick={() => setTab('library')}>คลังไฟล์</button>
         <button type="button" role="tab" aria-selected={tab === 'projects'} onClick={() => setTab('projects')}>โปรเจกต์</button>
         <button type="button" role="tab" aria-selected={tab === 'flows'} onClick={() => setTab('flows')}>Flow</button>
+        <button type="button" role="tab" aria-selected={tab === 'routes'} onClick={() => setTab('routes')}>เส้นทางแปลงไฟล์</button>
       </nav>
       {tab === 'library' && <Library registry={registry} />}
       {tab === 'projects' && <Projects key={projectFocus ?? ''} initial={projectFocus} />}
+      {tab === 'routes' && <ConversionRoutes />}
       {tab === 'flows' && (
         <Flows onOpenProject={(id) => {
           setProjectFocus(id);

@@ -105,6 +105,57 @@ export interface FlowDetail {
   steps: FlowStep[];
 }
 
+export type ConverterStatus = 'implemented' | 'available' | 'planned';
+
+export interface FormatEntry {
+  domain: string;
+  ext: string[];
+  media: string;
+  text: 'authored' | 'generated' | 'binary';
+  roles: string[];
+  kinds?: string[];
+  note?: string;
+}
+
+export interface FormatRegistry {
+  summary: { domains: number; formats: number; effects: number; converters: number; by_status: Record<string, number> };
+  levels: Record<string, string>;
+  domains: Record<string, { label: string; max_level: string; note?: string }>;
+  formats: Record<string, FormatEntry>;
+  effects: Record<string, { domain: string; description: string }>;
+}
+
+export interface RouteStep {
+  from: string;
+  to: string;
+  converter: string;
+  tool: string;
+  status: ConverterStatus;
+  level: string;
+  requires: string[];
+  approval: 'human' | null;
+  missing?: string[];
+  runnable?: boolean;
+}
+
+export interface Route {
+  from: string;
+  to: string;
+  hops: number;
+  ready: boolean;
+  runnable_now: boolean;
+  needs_approval: boolean;
+  requires: string[];
+  missing: string[];
+  steps: RouteStep[];
+}
+
+export interface RuntimeState {
+  label: string;
+  status: 'installed' | 'missing' | 'manual';
+  found: string | null;
+}
+
 export class HubError extends Error {
   constructor(public code: string, message: string, public status: number) {
     super(message);
@@ -159,6 +210,14 @@ export const api = {
   flow: (id: string, f?: Fetcher) => call<FlowDetail>(`v1/flows/${id}`, {}, f),
   runFlow: (definition: unknown, f?: Fetcher) => post<FlowDetail>('v1/flows', definition, f),
   resumeFlow: (id: string, f?: Fetcher) => post<FlowDetail>(`v1/flows/${id}/resume`, {}, f),
+  formats: (f?: Fetcher) => call<FormatRegistry>('v1/formats', {}, f),
+  runtimes: (refresh = false, f?: Fetcher) =>
+    call<{ runtimes: Record<string, RuntimeState> }>(`v1/runtimes${refresh ? '?refresh=1' : ''}`, {}, f),
+  path: (query: { from: string; to: string; implementedOnly?: boolean }, f?: Fetcher) => {
+    const params = new URLSearchParams({ from: query.from, to: query.to });
+    if (query.implementedOnly) params.set('implemented_only', '1');
+    return call<{ source: string; target: string; routes: Route[] }>(`v1/path?${params}`, {}, f);
+  },
   send: (body: { artifact_id: string; to: string; params: Record<string, string>; with?: string[] }, f?: Fetcher) =>
     post<{ send_id: string; handoff_id: string; outputs: { artifact_id: string; kind: string; filename: string }[] }>(
       'v1/send', body, f,
@@ -197,6 +256,22 @@ export const FLOW_PILL: Record<FlowState, string> = {
   completed: 'accepted',
   failed: 'rejected',
 };
+
+export const LEVEL_LABELS: Record<string, string> = {
+  L1: 'สร้างไฟล์',
+  L2: 'จำลอง',
+  L3: 'ตรวจ',
+  L4: 'เตรียมชุดปฏิบัติการ',
+  L6: 'ลงมือจริง',
+};
+
+export function stepState(step: RouteStep): { label: string; pill: string } {
+  if (step.status === 'implemented') return { label: 'ใช้ได้แล้ว', pill: 'accepted' };
+  if (step.status === 'planned') return { label: 'อยู่ในแผน', pill: '' };
+  return step.runnable
+    ? { label: 'ติดตั้งแล้ว ยังไม่ได้เชื่อม', pill: 'needs_review' }
+    : { label: `ต้องติดตั้ง ${(step.missing ?? step.requires).join(', ')}`, pill: 'rejected' };
+}
 
 export const QA_LABELS: Record<QAStatus, string> = {
   accepted: 'ผ่าน QA',

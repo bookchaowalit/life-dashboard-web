@@ -22,6 +22,9 @@ describe('backend registry', () => {
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/flows')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'POST', 'v1/flows/pod_launch-2/resume')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'POST', 'v1/flows/pod/cancel')).toBe(false);
+    expect(isAllowed(BACKENDS.production, 'GET', 'v1/path')).toBe(true);
+    expect(isAllowed(BACKENDS.production, 'GET', 'v1/formats')).toBe(true);
+    expect(isAllowed(BACKENDS.production, 'GET', 'v1/path/../../etc')).toBe(false);
     expect(isAllowed(BACKENDS.cloud, 'GET', 'v1/paas/execute')).toBe(false);
   });
 
