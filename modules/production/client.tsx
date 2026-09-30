@@ -18,6 +18,7 @@ import {
   type ArtifactRow,
   type FlowDetail,
   type FlowSummary,
+  type FlowTemplateInfo,
   type JobProgress,
   type JobView,
   type LineageNode,
@@ -27,6 +28,7 @@ import {
   type SendOption,
   type SendOutput,
 } from './api';
+import { translateFlowError } from './api';
 import ConversionRoutes from './routes';
 
 type Tab = 'library' | 'projects' | 'flows' | 'routes';
@@ -458,6 +460,113 @@ function Projects({ initial = null }: { initial?: string | null }) {
 
 const RESUMABLE = new Set(['pending', 'waiting_approval', 'failed']);
 
+function TemplateStart({ onStarted }: { onStarted: (flowId: string, jobId: string) => void }) {
+  const [templates, setTemplates] = useState<FlowTemplateInfo[] | null>(null);
+  const [selectedId, setSelectedId] = useState('');
+  const [project, setProject] = useState('');
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [params, setParams] = useState<Record<string, string>>({});
+  const [candidates, setCandidates] = useState<Record<string, ArtifactRow[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.flowTemplates().then((data) => active && setTemplates(data.items)).catch(() => active && setTemplates([]));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const template = templates?.find((item) => item.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!template) {
+      setCandidates({});
+      return;
+    }
+    let active = true;
+    setInputs({});
+    setParams({});
+    Promise.all(template.inputs.map((input) => api.artifacts({ kind: input.kind })))
+      .then((lists) => {
+        if (active) setCandidates(Object.fromEntries(template.inputs.map((input, index) => [input.name, lists[index].items])));
+      })
+      .catch(() => active && setCandidates({}));
+    return () => {
+      active = false;
+    };
+  }, [template]);
+
+  if (templates === null || templates.length === 0) return null;
+  const ready = template !== null
+    && template.inputs.every((input) => !input.required || (inputs[input.name] ?? '') !== '')
+    && Object.entries(template.params).every(([key, info]) => !info.required || (params[key] ?? '').trim() !== '');
+  async function start(event: React.FormEvent) {
+    event.preventDefault();
+    if (!template) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.startFlowTemplate(template.id, { project_id: project || undefined, inputs, params });
+      onStarted(result.flow_id, result.job_id);
+    } catch (cause) {
+      setError(translateFlowError(message(cause)));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="panel form" onSubmit={start}>
+      <h2>เริ่มจาก template</h2>
+      <label>แบบ flow
+        <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+          <option value="">— เลือกแบบ —</option>
+          {templates.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
+      </label>
+      {template && (
+        <>
+          <p className="muted">{template.description}</p>
+          <label>โปรเจกต์ (ว่าง = ใช้ชื่อ template)
+            <input value={project} placeholder={template.id} onChange={(event) => setProject(event.target.value)} />
+          </label>
+          {template.inputs.map((input) => (
+            <label key={input.name}>
+              {input.label} <span className="muted">({input.kind})</span>
+              <select value={inputs[input.name] ?? ''} onChange={(event) => setInputs({ ...inputs, [input.name]: event.target.value })}>
+                <option value="">— เลือกไฟล์ —</option>
+                {(candidates[input.name] ?? []).map((item) => (
+                  <option key={item.artifact_id} value={item.artifact_id}>
+                    {item.filename} · {item.tool_id} · {shortId(item.artifact_id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          {Object.entries(template.params).map(([key, info]) => (
+            <label key={key} title={info.description}>
+              {key}{info.required && ' *'}{info.description && <span className="muted"> — {info.description}</span>}
+              {info.choices.length > 0 ? (
+                <select value={params[key] ?? info.default} onChange={(event) => setParams({ ...params, [key]: event.target.value })}>
+                  {info.choices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
+                </select>
+              ) : (
+                <input value={params[key] ?? ''} placeholder={info.default || undefined}
+                  onChange={(event) => setParams({ ...params, [key]: event.target.value })} />
+              )}
+            </label>
+          ))}
+        </>
+      )}
+      <Notice kind="error" text={error} />
+      <div className="actions">
+        <button type="submit" disabled={busy || !ready}>{busy ? 'กำลังเริ่ม…' : 'เริ่ม flow'}</button>
+      </div>
+    </form>
+  );
+}
+
 function FlowView({ flowId, jobId, onChanged, onOpenProject }: {
   flowId: string; jobId?: string | null; onChanged: () => void; onOpenProject: (id: string) => void;
 }) {
@@ -603,7 +712,7 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
       setDefinition('');
       load();
     } catch (cause) {
-      setError(message(cause));
+      setError(translateFlowError(message(cause)));
     } finally {
       setBusy(false);
     }
@@ -632,6 +741,12 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
             ))}
           </ul>
         </div>
+        <TemplateStart onStarted={(flowId, jobId) => {
+          setSelected(flowId);
+          setStartedJob(jobId);
+          setVersion((value) => value + 1);
+          load();
+        }} />
         <form className="panel form" onSubmit={start}>
           <h2>เริ่ม flow ใหม่</h2>
           <label>นิยาม flow (<code>hub-flow.v1</code> JSON)
@@ -650,8 +765,7 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
         ) : (
           <div className="panel"><p className="muted">เลือก flow เพื่อดูแต่ละขั้นและรันต่อ</p></div>
         )}
-      </aside>
-    </div>
+      </aside>    </div>
   );
 }
 

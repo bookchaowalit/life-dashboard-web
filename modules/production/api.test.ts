@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { api, formatBytes, HubError, NEXT_REVIEW, shortId, stepState, type RouteStep } from './api';
+import { api, formatBytes, HubError, NEXT_REVIEW, shortId, stepState, translateFlowError, type RouteStep } from './api';
 
 const ID = `sha256:${'a'.repeat(64)}`;
 
@@ -59,6 +59,33 @@ describe('api client', () => {
     expect(calls[0]).toEqual(['/api/production/v1/send', 'POST']);
     await api.job('20260101T000000-abcd1234', fetcher);
     expect(calls[1]).toEqual(['/api/production/v1/jobs/20260101T000000-abcd1234', 'GET']);
+  });
+
+  it('lists flow templates and starts one without JSON', async () => {
+    const calls: [string, string][] = [];
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      calls.push([url, String(init?.method ?? 'GET')]);
+      return new Response(JSON.stringify({
+        items: [], job_id: '20260101T000000-abcd1234', flow_id: 'promote-product-x', status: 'queued',
+      }));
+    }) as unknown as typeof fetch;
+    await api.flowTemplates(fetcher);
+    const start = await api.startFlowTemplate('promote-product', {
+      project_id: 'promo', inputs: { captions: 'sha256:c'.slice(0, 71) }, params: { headline: 'h' },
+    }, fetcher);
+    expect(start.flow_id).toBe('promote-product-x');
+    expect(calls).toEqual([
+      ['/api/production/v1/flow-templates', 'GET'],
+      ['/api/production/v1/flow-templates/promote-product', 'POST'],
+    ]);
+  });
+
+  it('translates validate_flow problems into Thai', () => {
+    expect(translateFlowError('steps[0].send.params is missing headline, title')).toContain('params ขาด: headline, title');
+    expect(translateFlowError('role must be one of music, collect_sfx')).toContain('ต้องเป็นหนึ่งใน: music, collect_sfx');
+    expect(translateFlowError('flow launch-1 already exists with a different definition; use a new flow_id'))
+      .toContain('ตั้ง flow id ใหม่');
+    expect(translateFlowError('steps must be a list of 1-30 steps')).toContain('1-30 ขั้น');
   });
 
   it('keeps the dry-run send synchronous', async () => {

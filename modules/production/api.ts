@@ -157,6 +157,28 @@ export interface FlowJobStart {
   status: 'queued';
 }
 
+export interface TemplateInputInfo {
+  name: string;
+  kind: string;
+  label: string;
+  required: boolean;
+}
+
+export interface TemplateParamInfo {
+  required: boolean;
+  choices: string[];
+  default: string;
+  description: string;
+}
+
+export interface FlowTemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  inputs: TemplateInputInfo[];
+  params: Record<string, TemplateParamInfo>;
+}
+
 export interface FormatEntry {
   domain: string;
   ext: string[];
@@ -258,6 +280,9 @@ export const api = {
     post<{ artifact_id: string; path: string; files: number }>(`v1/projects/${project}/package`, {}, f),
   flows: (f?: Fetcher) => call<{ items: FlowSummary[] }>('v1/flows', {}, f),
   flow: (id: string, f?: Fetcher) => call<FlowDetail>(`v1/flows/${id}`, {}, f),
+  flowTemplates: (f?: Fetcher) => call<{ items: FlowTemplateInfo[] }>('v1/flow-templates', {}, f),
+  startFlowTemplate: (id: string, body: { project_id?: string; inputs: Record<string, string>; params: Record<string, string> }, f?: Fetcher) =>
+    post<FlowJobStart>(`v1/flow-templates/${id}`, body, f),
   runFlow: (definition: unknown, f?: Fetcher) => post<FlowJobStart>('v1/flows', definition, f),
   resumeFlow: (id: string, f?: Fetcher) => post<FlowJobStart>(`v1/flows/${id}/resume`, {}, f),
   job: (id: string, f?: Fetcher) => call<JobView>(`v1/jobs/${id}`, {}, f),
@@ -303,6 +328,36 @@ export const JOB_LABELS: Record<JobState, string> = {
   completed: 'เสร็จแล้ว',
   failed: 'ล้มเหลว',
 };
+
+/** English validate_flow / template problems the Hub returns, one Thai phrase at a time. */
+const FLOW_ERROR_RULES: [RegExp, string][] = [
+  [/schema_version must be hub-flow\.v1/, 'ต้องตั้ง schema_version เป็น "hub-flow.v1"'],
+  [/(?:flow_id|project_id) must be lowercase letters, digits, - or _/, 'flow_id/project_id ต้องใช้ตัวพิมพ์เล็ก a-z ตัวเลข และ - เท่านั้น'],
+  [/steps must be a list of 1-(\d+) steps/, 'steps ต้องเป็นลิสต์ 1-$1 ขั้น'],
+  [/\.id must be a unique lowercase id/, 'รหัส step ต้องเป็นพิมพ์เล็กและไม่ซ้ำกัน'],
+  [/needs exactly one of send or gate/, 'แต่ละ step ต้องมี send หรือ gate อย่างใดอย่างหนึ่ง'],
+  [/must be an implemented handoff with a send adapter/, 'handoff นี้ยังไม่พร้อมใช้งาน (ต้องเป็นเส้นทางที่ implemented และมี adapter)'],
+  [/params is missing (.+)/, 'params ขาด: $1'],
+  [/params must map names to strings/, 'params ต้องเป็นชื่อ → ข้อความเท่านั้น'],
+  [/(\S+) must be one of ([\w.,-]+)/, '$1 ต้องเป็นหนึ่งใน: $2'],
+  [/from_step must name an earlier step/, 'from_step ต้องอ้างถึง step ที่อยู่ก่อนหน้า'],
+  [/kind is required with from_step/, 'เมื่อใช้ from_step ต้องระบุ kind ด้วย'],
+  [/approve_kinds must list at least one kind/, 'จุดตรวจต้องระบุ kind ที่ต้องอนุมัติอย่างน้อย 1 ชนิด'],
+  [/already exists with a different definition/, 'flow id นี้ถูกใช้แล้วด้วยเนื้อหาต่างกัน — ตั้ง flow id ใหม่'],
+  [/unknown flow: (\S+)/, 'ไม่พบ flow $1'],
+  [/artifact is not registered: (\S+)/, 'ไม่พบไฟล์ในคลัง: $1'],
+  [/template needs parameter\(s\): (.+)/, 'template ต้องการพารามิเตอร์: $1'],
+  [/template needs input (\w+)/, 'template ต้องเลือกไฟล์: $1'],
+  [/does not take parameter\(s\): (.+)/, 'template ไม่รับพารามิเตอร์: $1'],
+  [/gate has no artifacts to approve/, 'จุดตรวจไม่มีไฟล์ให้อนุมัติ'],
+  [/has (\d+) (\S+) outputs matching the selector; need exactly one/, 'step ต้นทางมีไฟล์ชนิด $2 อยู่ $1 ไฟล์ (ต้องมีพอดี 1 ไฟล์)'],
+];
+
+export function translateFlowError(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of FLOW_ERROR_RULES) result = result.replace(pattern, replacement);
+  return result;
+}
 
 /** Reuses the QA pill colours: done = green, failed = red, waiting = amber. */
 export const FLOW_PILL: Record<FlowState, string> = {
