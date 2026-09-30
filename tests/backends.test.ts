@@ -22,6 +22,9 @@ describe('backend registry', () => {
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/flows')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'POST', 'v1/flows/pod_launch-2/resume')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'POST', 'v1/flows/pod/cancel')).toBe(false);
+    expect(isAllowed(BACKENDS.production, 'GET', 'v1/jobs/20260101T000000-abcd1234')).toBe(true);
+    // the proxy filters paths, not methods; the hub itself 404s a POST to a read-only job route
+    expect(isAllowed(BACKENDS.production, 'GET', 'v1/jobs/other-id')).toBe(false);
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/path')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/formats')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/path/../../etc')).toBe(false);

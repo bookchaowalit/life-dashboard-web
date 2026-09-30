@@ -13,12 +13,19 @@ export interface ArtifactRow {
   created_at: string;
 }
 
+export interface OptionalParamInfo {
+  default: string;
+  choices: string[];
+  description: string;
+}
+
 export interface SendOption {
   handoff_id: string;
   to_tool: string;
   status: 'implemented' | 'planned';
   available: boolean;
   required_params: string[];
+  optional_params?: Record<string, OptionalParamInfo>;
   extra_kinds: string[];
 }
 
@@ -106,6 +113,49 @@ export interface FlowDetail {
 }
 
 export type ConverterStatus = 'implemented' | 'available' | 'planned';
+
+export type JobState = 'queued' | 'running' | 'completed' | 'failed';
+
+export interface JobView {
+  job_id: string;
+  kind: 'send' | 'flow';
+  status: JobState;
+  error: string | null;
+  log: string[];
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What the UI tracks while a job runs; the full JobView is a superset. */
+export type JobProgress = Pick<JobView, 'status' | 'log'>;
+
+export interface SendStart {
+  job_id: string;
+  kind: 'send';
+  status: 'queued';
+}
+
+export interface SendOutput {
+  artifact_id: string;
+  kind: string;
+  filename: string;
+}
+
+export interface SendDryRun {
+  send_id: string;
+  handoff_id: string;
+  dry_run: true;
+  outputs: SendOutput[];
+}
+
+export type SendResponse = SendStart | SendDryRun;
+
+export interface FlowJobStart {
+  job_id: string;
+  flow_id: string;
+  status: 'queued';
+}
 
 export interface FormatEntry {
   domain: string;
@@ -208,8 +258,9 @@ export const api = {
     post<{ artifact_id: string; path: string; files: number }>(`v1/projects/${project}/package`, {}, f),
   flows: (f?: Fetcher) => call<{ items: FlowSummary[] }>('v1/flows', {}, f),
   flow: (id: string, f?: Fetcher) => call<FlowDetail>(`v1/flows/${id}`, {}, f),
-  runFlow: (definition: unknown, f?: Fetcher) => post<FlowDetail>('v1/flows', definition, f),
-  resumeFlow: (id: string, f?: Fetcher) => post<FlowDetail>(`v1/flows/${id}/resume`, {}, f),
+  runFlow: (definition: unknown, f?: Fetcher) => post<FlowJobStart>('v1/flows', definition, f),
+  resumeFlow: (id: string, f?: Fetcher) => post<FlowJobStart>(`v1/flows/${id}/resume`, {}, f),
+  job: (id: string, f?: Fetcher) => call<JobView>(`v1/jobs/${id}`, {}, f),
   formats: (f?: Fetcher) => call<FormatRegistry>('v1/formats', {}, f),
   runtimes: (refresh = false, f?: Fetcher) =>
     call<{ runtimes: Record<string, RuntimeState> }>(`v1/runtimes${refresh ? '?refresh=1' : ''}`, {}, f),
@@ -218,10 +269,8 @@ export const api = {
     if (query.implementedOnly) params.set('implemented_only', '1');
     return call<{ source: string; target: string; routes: Route[] }>(`v1/path?${params}`, {}, f);
   },
-  send: (body: { artifact_id: string; to: string; params: Record<string, string>; with?: string[] }, f?: Fetcher) =>
-    post<{ send_id: string; handoff_id: string; outputs: { artifact_id: string; kind: string; filename: string }[] }>(
-      'v1/send', body, f,
-    ),
+  send: (body: { artifact_id: string; to: string; params: Record<string, string>; with?: string[]; dry_run?: boolean }, f?: Fetcher) =>
+    post<SendResponse>('v1/send', body, f),
 };
 
 export const REVIEW_LABELS: Record<ReviewStatus, string> = {
@@ -244,6 +293,13 @@ export const FLOW_LABELS: Record<FlowState, string> = {
   pending: 'รอเริ่ม',
   running: 'กำลังรัน',
   waiting_approval: 'รออนุมัติ',
+  completed: 'เสร็จแล้ว',
+  failed: 'ล้มเหลว',
+};
+
+export const JOB_LABELS: Record<JobState, string> = {
+  queued: 'รอคิว',
+  running: 'กำลังรันเครื่องมือ',
   completed: 'เสร็จแล้ว',
   failed: 'ล้มเหลว',
 };

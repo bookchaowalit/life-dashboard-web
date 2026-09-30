@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   api,
@@ -9,6 +9,7 @@ import {
   formatBytes,
   HubError,
   isPreviewable,
+  JOB_LABELS,
   NEXT_REVIEW,
   QA_LABELS,
   REVIEW_LABELS,
@@ -17,17 +18,34 @@ import {
   type ArtifactRow,
   type FlowDetail,
   type FlowSummary,
+  type JobProgress,
+  type JobView,
   type LineageNode,
   type ProjectArtifact,
   type ProjectSummary,
   type Registry,
   type SendOption,
+  type SendOutput,
 } from './api';
 import ConversionRoutes from './routes';
 
 type Tab = 'library' | 'projects' | 'flows' | 'routes';
 
 const message = (cause: unknown) => (cause instanceof HubError ? cause.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด');
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Polls a hub job every 1.5 s until it settles; returns null when the token was cancelled (unmounted). */
+async function pollUntilDone(jobId: string, onJob: (job: JobProgress) => void, token: { cancelled: boolean }): Promise<JobView | null> {
+  for (;;) {
+    await sleep(1500);
+    if (token.cancelled) return null;
+    const job = await api.job(jobId);
+    if (token.cancelled) return null;
+    onJob(job);
+    if (job.status === 'completed' || job.status === 'failed') return job;
+  }
+}
 
 function Notice({ kind, text }: { kind: 'error' | 'success'; text: string | null }) {
   if (!text) return null;
@@ -54,6 +72,8 @@ function SendForm({ artifact, option, onDone }: { artifact: ArtifactRecord; opti
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [job, setJob] = useState<JobProgress | null>(null);
+  const pollToken = useRef({ cancelled: false });
 
   useEffect(() => {
     if (!option.available || option.extra_kinds.length === 0) return;
@@ -66,6 +86,10 @@ function SendForm({ artifact, option, onDone }: { artifact: ArtifactRecord; opti
     };
   }, [option]);
 
+  useEffect(() => () => {
+    pollToken.current.cancelled = true;
+  }, []);
+
   if (!option.available) {
     return (
       <div className="send unavailable">
@@ -75,16 +99,33 @@ function SendForm({ artifact, option, onDone }: { artifact: ArtifactRecord; opti
     );
   }
   const needsExtra = option.extra_kinds.length > 0;
+  const optionalParams = option.optional_params ?? {};
   const ready = option.required_params.every((key) => params[key]?.trim()) && (!needsExtra || extra !== '');
+  const setParam = (key: string, value: string) => setParams((current) => ({ ...current, [key]: value }));
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     setResult(null);
+    setJob(null);
     try {
       const response = await api.send({
         artifact_id: artifact.artifact_id, to: option.to_tool, params, with: extra ? [extra] : undefined,
       });
+      if ('job_id' in response) {
+        setJob({ status: response.status, log: [] });
+        const done = await pollUntilDone(response.job_id, setJob, pollToken.current);
+        if (!done) return;
+        if (done.status === 'completed') {
+          const outputs = (done.result?.outputs ?? []) as SendOutput[];
+          const handoff = typeof done.result?.handoff_id === 'string' ? done.result.handoff_id : option.handoff_id;
+          setResult(`สร้างไฟล์ใหม่ ${outputs.length} ไฟล์ (${handoff})`);
+          if (outputs[0]) onDone(outputs[0].artifact_id);
+        } else {
+          setError(done.error ?? 'งานล้มเหลว — ดูรายละเอียดใน log ของ Production Hub');
+        }
+        return;
+      }
       setResult(`สร้างไฟล์ใหม่ ${response.outputs.length} ไฟล์ (${response.handoff_id})`);
       if (response.outputs[0]) onDone(response.outputs[0].artifact_id);
     } catch (cause) {
@@ -112,12 +153,30 @@ function SendForm({ artifact, option, onDone }: { artifact: ArtifactRecord; opti
       {option.required_params.map((key) => (
         <label key={key}>
           {key}
-          <input value={params[key] ?? ''} onChange={(event) => setParams({ ...params, [key]: event.target.value })} />
+          <input value={params[key] ?? ''} onChange={(event) => setParam(key, event.target.value)} />
+        </label>
+      ))}
+      {Object.entries(optionalParams).map(([key, info]) => (
+        <label key={key} title={info.description}>
+          {key}{info.description && <span className="muted"> — {info.description}</span>}
+          {info.choices.length > 0 ? (
+            <select value={params[key] ?? info.default} onChange={(event) => setParam(key, event.target.value)}>
+              {info.choices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
+            </select>
+          ) : (
+            <input value={params[key] ?? ''} placeholder={info.default || undefined}
+              onChange={(event) => setParam(key, event.target.value)} />
+          )}
         </label>
       ))}
       <div className="actions">
         <button type="submit" disabled={busy || !ready}>{busy ? 'กำลังส่งและรันเครื่องมือ…' : 'ส่งต่อ'}</button>
       </div>
+      {job && (job.status === 'queued' || job.status === 'running') && (
+        <p className="muted" role="status">
+          {JOB_LABELS[job.status]}…{job.log.length > 0 && <> · {job.log[job.log.length - 1]}</>}
+        </p>
+      )}
       <Notice kind="error" text={error} />
       <Notice kind="success" text={result} />
     </form>
@@ -399,27 +458,56 @@ function Projects({ initial = null }: { initial?: string | null }) {
 
 const RESUMABLE = new Set(['pending', 'waiting_approval', 'failed']);
 
-function FlowView({ flowId, onChanged, onOpenProject }: {
-  flowId: string; onChanged: () => void; onOpenProject: (id: string) => void;
+function FlowView({ flowId, jobId, onChanged, onOpenProject }: {
+  flowId: string; jobId?: string | null; onChanged: () => void; onOpenProject: (id: string) => void;
 }) {
   const [flow, setFlow] = useState<FlowDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [job, setJob] = useState<JobProgress | null>(null);
+  const pollToken = useRef({ cancelled: false });
 
+  useEffect(() => () => {
+    pollToken.current.cancelled = true;
+  }, []);
+
+  const load = useCallback(() => {
+    api.flow(flowId).then((data) => setFlow(data)).catch((cause) => setError(message(cause)));
+  }, [flowId]);
+  useEffect(load, [load]);
+
+  const followJob = useCallback((started: JobProgress) => {
+    setJob(started);
+  }, []);
+
+  // A flow started from the form reports its job id; follow it and refresh the flow when it settles.
   useEffect(() => {
+    if (!jobId) return;
+    setJob({ status: 'queued', log: [] });
     let active = true;
-    api.flow(flowId).then((data) => active && setFlow(data)).catch((cause) => active && setError(message(cause)));
+    pollUntilDone(jobId, followJob, pollToken.current)
+      .then((done) => {
+        if (!active || !done) return;
+        load();
+        onChanged();
+        if (done.status === 'failed') setError(done.error ?? 'flow ล้มเหลว');
+      })
+      .catch((cause) => active && setError(message(cause)));
     return () => {
       active = false;
     };
-  }, [flowId]);
+  }, [jobId, load, onChanged, followJob]);
 
   async function resume() {
     setBusy(true);
     setError(null);
     try {
-      setFlow(await api.resumeFlow(flowId));
+      const start = await api.resumeFlow(flowId);
+      const done = await pollUntilDone(start.job_id, setJob, pollToken.current);
+      if (!done) return;
+      load();
       onChanged();
+      if (done.status === 'failed') setError(done.error ?? 'flow ล้มเหลว');
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -458,6 +546,11 @@ function FlowView({ flowId, onChanged, onOpenProject }: {
           </li>
         ))}
       </ol>
+      {job && (job.status === 'queued' || job.status === 'running') && (
+        <p className="muted" role="status">
+          {JOB_LABELS[job.status]}…{job.log.length > 0 && <> · {job.log[job.log.length - 1]}</>}
+        </p>
+      )}
       <div className="actions" style={{ marginTop: 12 }}>
         {gate && <button type="button" className="secondary" onClick={() => onOpenProject(flow.project_id)}>ไปหน้าตรวจงาน</button>}
         {RESUMABLE.has(flow.status) && (
@@ -472,6 +565,7 @@ function FlowView({ flowId, onChanged, onOpenProject }: {
 function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
   const [items, setItems] = useState<FlowSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [startedJob, setStartedJob] = useState<string | null>(null);
   const [definition, setDefinition] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -484,6 +578,11 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
     });
   }, []);
   useEffect(load, [load]);
+
+  function open(flowId: string) {
+    setSelected(flowId);
+    setStartedJob(null);
+  }
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
@@ -499,6 +598,7 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
     try {
       const result = await api.runFlow(parsed);
       setSelected(result.flow_id);
+      setStartedJob(result.job_id);
       setVersion((value) => value + 1);
       setDefinition('');
       load();
@@ -521,7 +621,7 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
             {items?.map((item) => (
               <li key={item.flow_id}>
                 <button type="button" className="row" aria-current={selected === item.flow_id}
-                  onClick={() => setSelected(item.flow_id)}>
+                  onClick={() => open(item.flow_id)}>
                   <span className="name">{item.flow_id}</span>
                   <span className={`pill ${FLOW_PILL[item.status]}`}>{FLOW_LABELS[item.status]}</span>
                   <span className="meta">
@@ -546,7 +646,7 @@ function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
       </section>
       <aside>
         {selected ? (
-          <FlowView key={`${selected}:${version}`} flowId={selected} onChanged={load} onOpenProject={onOpenProject} />
+          <FlowView key={`${selected}:${version}`} flowId={selected} jobId={startedJob} onChanged={load} onOpenProject={onOpenProject} />
         ) : (
           <div className="panel"><p className="muted">เลือก flow เพื่อดูแต่ละขั้นและรันต่อ</p></div>
         )}

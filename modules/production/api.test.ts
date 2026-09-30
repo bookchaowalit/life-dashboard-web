@@ -36,7 +36,7 @@ describe('api client', () => {
     const calls: [string, string][] = [];
     const fetcher = (async (url: string, init?: RequestInit) => {
       calls.push([url, String(init?.method ?? 'GET')]);
-      return new Response(JSON.stringify({ flow_id: 'f1', project_id: 'p', status: 'completed', error: null, steps: [] }));
+      return new Response(JSON.stringify({ job_id: '20260101T000000-abcd1234', flow_id: 'f1', status: 'queued' }));
     }) as unknown as typeof fetch;
     await api.runFlow({ schema_version: 'hub-flow.v1' }, fetcher);
     await api.resumeFlow('f1', fetcher);
@@ -46,6 +46,25 @@ describe('api client', () => {
       ['/api/production/v1/flows/f1/resume', 'POST'],
       ['/api/production/v1/flows/f1', 'GET'],
     ]);
+  });
+
+  it('sends artifacts and polls job status', async () => {
+    const calls: [string, string][] = [];
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      calls.push([url, String(init?.method ?? 'GET')]);
+      return new Response(JSON.stringify({ job_id: '20260101T000000-abcd1234', kind: 'send', status: 'queued' }));
+    }) as unknown as typeof fetch;
+    const start = await api.send({ artifact_id: 'sha256:b'.slice(0, 71), to: 'graphics-v1a', params: { title: 't' } }, fetcher);
+    expect('job_id' in start && start.status === 'queued').toBe(true);
+    expect(calls[0]).toEqual(['/api/production/v1/send', 'POST']);
+    await api.job('20260101T000000-abcd1234', fetcher);
+    expect(calls[1]).toEqual(['/api/production/v1/jobs/20260101T000000-abcd1234', 'GET']);
+  });
+
+  it('keeps the dry-run send synchronous', async () => {
+    const fetcher = respond(200, { send_id: 's1', handoff_id: 'E4-chart-to-graphics', dry_run: true, outputs: [] });
+    const start = await api.send({ artifact_id: 'sha256:b'.slice(0, 71), to: 'graphics-v1a', params: {}, dry_run: true }, fetcher);
+    expect('dry_run' in start && start.dry_run).toBe(true);
   });
 });
 
