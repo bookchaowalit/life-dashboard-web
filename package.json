@@ -1,0 +1,27 @@
+{
+  "name": "solo-empire-solo-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unified Solo Empire web app: one frontend, independently deployed backends behind /api/<service>.",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 -p 3600",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 -p 3600",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "scope-css": "node scripts/scope-css.mjs"
+  },
+  "dependencies": {
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
