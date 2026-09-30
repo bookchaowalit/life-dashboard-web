@@ -31,6 +31,22 @@ describe('api client', () => {
     await api.artifacts({ kind: 'chart.svg', tool: '', project: 'rep-1' }, fetcher);
     expect(seen).toBe('/api/production/v1/artifacts?kind=chart.svg&project=rep-1');
   });
+
+  it('posts flow definitions and resumes by id', async () => {
+    const calls: [string, string][] = [];
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      calls.push([url, String(init?.method ?? 'GET')]);
+      return new Response(JSON.stringify({ flow_id: 'f1', project_id: 'p', status: 'completed', error: null, steps: [] }));
+    }) as unknown as typeof fetch;
+    await api.runFlow({ schema_version: 'hub-flow.v1' }, fetcher);
+    await api.resumeFlow('f1', fetcher);
+    await api.flow('f1', fetcher);
+    expect(calls).toEqual([
+      ['/api/production/v1/flows', 'POST'],
+      ['/api/production/v1/flows/f1/resume', 'POST'],
+      ['/api/production/v1/flows/f1', 'GET'],
+    ]);
+  });
 });
 
 describe('helpers', () => {

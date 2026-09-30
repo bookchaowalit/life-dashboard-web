@@ -75,6 +75,36 @@ export interface Registry {
   tools: Record<string, { produces: string[]; consumes: string[] }>;
 }
 
+export type FlowState = 'pending' | 'running' | 'waiting_approval' | 'completed' | 'failed';
+
+export interface FlowSummary {
+  flow_id: string;
+  project_id: string;
+  status: FlowState;
+  error: string | null;
+  steps: number;
+  completed: number;
+  updated_at: string;
+}
+
+export interface FlowStep {
+  step_id: string;
+  type: 'send' | 'gate';
+  handoff?: string;
+  status: FlowState;
+  send_id?: string | null;
+  output_ids?: string[];
+  error?: string | null;
+}
+
+export interface FlowDetail {
+  flow_id: string;
+  project_id: string;
+  status: FlowState;
+  error: string | null;
+  steps: FlowStep[];
+}
+
 export class HubError extends Error {
   constructor(public code: string, message: string, public status: number) {
     super(message);
@@ -125,6 +155,10 @@ export const api = {
     post<{ from: ReviewStatus; to: ReviewStatus }>(`v1/projects/${project}/review`, body, f),
   packageProject: (project: string, f?: Fetcher) =>
     post<{ artifact_id: string; path: string; files: number }>(`v1/projects/${project}/package`, {}, f),
+  flows: (f?: Fetcher) => call<{ items: FlowSummary[] }>('v1/flows', {}, f),
+  flow: (id: string, f?: Fetcher) => call<FlowDetail>(`v1/flows/${id}`, {}, f),
+  runFlow: (definition: unknown, f?: Fetcher) => post<FlowDetail>('v1/flows', definition, f),
+  resumeFlow: (id: string, f?: Fetcher) => post<FlowDetail>(`v1/flows/${id}/resume`, {}, f),
   send: (body: { artifact_id: string; to: string; params: Record<string, string>; with?: string[] }, f?: Fetcher) =>
     post<{ send_id: string; handoff_id: string; outputs: { artifact_id: string; kind: string; filename: string }[] }>(
       'v1/send', body, f,
@@ -145,6 +179,23 @@ export const NEXT_REVIEW: Record<ReviewStatus, ReviewStatus[]> = {
   changes_requested: ['draft', 'in_review'],
   approved: ['delivered', 'changes_requested'],
   delivered: [],
+};
+
+export const FLOW_LABELS: Record<FlowState, string> = {
+  pending: 'รอเริ่ม',
+  running: 'กำลังรัน',
+  waiting_approval: 'รออนุมัติ',
+  completed: 'เสร็จแล้ว',
+  failed: 'ล้มเหลว',
+};
+
+/** Reuses the QA pill colours: done = green, failed = red, waiting = amber. */
+export const FLOW_PILL: Record<FlowState, string> = {
+  pending: '',
+  running: 'needs_review',
+  waiting_approval: 'needs_review',
+  completed: 'accepted',
+  failed: 'rejected',
 };
 
 export const QA_LABELS: Record<QAStatus, string> = {

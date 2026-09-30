@@ -26,6 +26,7 @@ export interface Backend {
 
 const SHA = 'sha256:[0-9a-f]{64}';
 const SLUG = '[a-z0-9]+(?:-[a-z0-9]+)*';
+const FLOW = '[a-z0-9]+(?:[-_][a-z0-9]+)*';
 
 export const BACKENDS: Record<string, Backend> = {
   today: {
@@ -49,6 +50,7 @@ export const BACKENDS: Record<string, Backend> = {
     routes: [
       /^v1\/health$/, /^v1\/registry$/, /^v1\/artifacts$/, new RegExp(`^v1/artifacts/${SHA}(?:/lineage|/content)?$`),
       /^v1\/projects$/, new RegExp(`^v1/projects/${SLUG}(?:/(?:review|assign|package))?$`), /^v1\/send$/,
+      /^v1\/flows$/, new RegExp(`^v1/flows/${FLOW}(?:/resume)?$`),
     ],
     serverHeaders: (env) => ({
       'X-Hub-Client': 'console',

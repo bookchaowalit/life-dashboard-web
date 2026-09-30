@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   api,
+  FLOW_LABELS,
+  FLOW_PILL,
   formatBytes,
   HubError,
   isPreviewable,
@@ -13,6 +15,8 @@ import {
   shortId,
   type ArtifactRecord,
   type ArtifactRow,
+  type FlowDetail,
+  type FlowSummary,
   type LineageNode,
   type ProjectArtifact,
   type ProjectSummary,
@@ -20,7 +24,7 @@ import {
   type SendOption,
 } from './api';
 
-type Tab = 'library' | 'projects';
+type Tab = 'library' | 'projects' | 'flows';
 
 const message = (cause: unknown) => (cause instanceof HubError ? cause.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด');
 
@@ -324,9 +328,9 @@ function ProjectDetail({ projectId }: { projectId: string }) {
   );
 }
 
-function Projects() {
+function Projects({ initial = null }: { initial?: string | null }) {
   const [items, setItems] = useState<ProjectSummary[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initial);
   const [form, setForm] = useState({ project_id: '', name: '', client: '' });
   const [error, setError] = useState<string | null>(null);
 
@@ -392,8 +396,167 @@ function Projects() {
   );
 }
 
+const RESUMABLE = new Set(['pending', 'waiting_approval', 'failed']);
+
+function FlowView({ flowId, onChanged, onOpenProject }: {
+  flowId: string; onChanged: () => void; onOpenProject: (id: string) => void;
+}) {
+  const [flow, setFlow] = useState<FlowDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.flow(flowId).then((data) => active && setFlow(data)).catch((cause) => active && setError(message(cause)));
+    return () => {
+      active = false;
+    };
+  }, [flowId]);
+
+  async function resume() {
+    setBusy(true);
+    setError(null);
+    try {
+      setFlow(await api.resumeFlow(flowId));
+      onChanged();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!flow) {
+    return <div className="panel">{error ? <Notice kind="error" text={error} /> : <p className="muted" role="status">กำลังโหลด…</p>}</div>;
+  }
+  const gate = flow.steps.find((step) => step.type === 'gate' && step.status === 'waiting_approval');
+  return (
+    <div className="panel">
+      <h2>{flow.flow_id}</h2>
+      <dl className="facts">
+        <dt>สถานะ</dt><dd><span className={`pill ${FLOW_PILL[flow.status]}`}>{FLOW_LABELS[flow.status]}</span></dd>
+        <dt>โปรเจกต์</dt><dd><code>{flow.project_id}</code></dd>
+      </dl>
+      {flow.error && <Notice kind="error" text={flow.error} />}
+      {gate && (
+        <p className="notice success" role="status">
+          รออนุมัติไฟล์ในโปรเจกต์ก่อนไปขั้นถัดไป — ตรวจและเปลี่ยนสถานะเป็น “อนุมัติแล้ว” แล้วกลับมากดรันต่อ
+        </p>
+      )}
+      <ol className="list">
+        {flow.steps.map((step) => (
+          <li key={step.step_id} className="row">
+            <span className="name">{step.step_id} · {step.type === 'gate' ? 'จุดตรวจงาน' : step.handoff}</span>
+            <span className={`pill ${FLOW_PILL[step.status]}`}>{FLOW_LABELS[step.status]}</span>
+            <span className="meta">
+              {(step.output_ids ?? []).map((id) => (
+                <a key={id} href={api.contentUrl(id)} target="_blank" rel="noreferrer"><code>{shortId(id)}</code></a>
+              ))}
+              {step.error && <span>{step.error}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="actions" style={{ marginTop: 12 }}>
+        {gate && <button type="button" className="secondary" onClick={() => onOpenProject(flow.project_id)}>ไปหน้าตรวจงาน</button>}
+        {RESUMABLE.has(flow.status) && (
+          <button type="button" onClick={resume} disabled={busy}>{busy ? 'กำลังรันเครื่องมือ…' : 'รันต่อ'}</button>
+        )}
+      </div>
+      <Notice kind="error" text={error} />
+    </div>
+  );
+}
+
+function Flows({ onOpenProject }: { onOpenProject: (id: string) => void }) {
+  const [items, setItems] = useState<FlowSummary[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [definition, setDefinition] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+
+  const load = useCallback(() => {
+    api.flows().then((data) => setItems(data.items)).catch((cause) => {
+      setItems([]);
+      setError(message(cause));
+    });
+  }, []);
+  useEffect(load, [load]);
+
+  async function start(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(definition);
+    } catch {
+      setError('JSON ไม่ถูกต้อง — ตรวจวงเล็บและเครื่องหมายคำพูด');
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.runFlow(parsed);
+      setSelected(result.flow_id);
+      setVersion((value) => value + 1);
+      setDefinition('');
+      load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="layout">
+      <section>
+        <div className="panel">
+          <h2>Flow</h2>
+          <p className="muted">ลำดับการส่งไฟล์ข้ามเครื่องมือ พร้อมจุดตรวจงานที่ต้องอนุมัติก่อนไปต่อ</p>
+          {items === null && <p className="muted" role="status">กำลังโหลด…</p>}
+          {items?.length === 0 && <p className="empty">ยังไม่มี flow</p>}
+          <ul className="list">
+            {items?.map((item) => (
+              <li key={item.flow_id}>
+                <button type="button" className="row" aria-current={selected === item.flow_id}
+                  onClick={() => setSelected(item.flow_id)}>
+                  <span className="name">{item.flow_id}</span>
+                  <span className={`pill ${FLOW_PILL[item.status]}`}>{FLOW_LABELS[item.status]}</span>
+                  <span className="meta">
+                    <code>{item.project_id}</code><span>{item.completed}/{item.steps} ขั้น</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <form className="panel form" onSubmit={start}>
+          <h2>เริ่ม flow ใหม่</h2>
+          <label>นิยาม flow (<code>hub-flow.v1</code> JSON)
+            <textarea rows={10} spellCheck={false} value={definition}
+              onChange={(event) => setDefinition(event.target.value)} />
+          </label>
+          <Notice kind="error" text={error} />
+          <div className="actions">
+            <button type="submit" disabled={busy || !definition.trim()}>{busy ? 'กำลังตรวจและรัน…' : 'ตรวจและเริ่ม'}</button>
+          </div>
+        </form>
+      </section>
+      <aside>
+        {selected ? (
+          <FlowView key={`${selected}:${version}`} flowId={selected} onChanged={load} onOpenProject={onOpenProject} />
+        ) : (
+          <div className="panel"><p className="muted">เลือก flow เพื่อดูแต่ละขั้นและรันต่อ</p></div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 export default function ConsoleClient() {
   const [tab, setTab] = useState<Tab>('library');
+  const [projectFocus, setProjectFocus] = useState<string | null>(null);
   const [health, setHealth] = useState<'checking' | 'ok' | 'down'>('checking');
   const [registry, setRegistry] = useState<Registry | null>(null);
 
@@ -421,8 +584,16 @@ export default function ConsoleClient() {
       <nav className="tabs" role="tablist" aria-label="ส่วนของ Console">
         <button type="button" role="tab" aria-selected={tab === 'library'} onClick={() => setTab('library')}>คลังไฟล์</button>
         <button type="button" role="tab" aria-selected={tab === 'projects'} onClick={() => setTab('projects')}>โปรเจกต์</button>
+        <button type="button" role="tab" aria-selected={tab === 'flows'} onClick={() => setTab('flows')}>Flow</button>
       </nav>
-      {tab === 'library' ? <Library registry={registry} /> : <Projects />}
+      {tab === 'library' && <Library registry={registry} />}
+      {tab === 'projects' && <Projects key={projectFocus ?? ''} initial={projectFocus} />}
+      {tab === 'flows' && (
+        <Flows onOpenProject={(id) => {
+          setProjectFocus(id);
+          setTab('projects');
+        }} />
+      )}
     </main>
   );
 }
