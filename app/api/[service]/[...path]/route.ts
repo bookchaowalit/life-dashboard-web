@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { BACKENDS, isAllowed, resolveOrigin } from '@/lib/backends';
+import { guardRequest } from '@/lib/request-guard';
+
+const APP_PORT = 3600;
 
 type Context = { params: Promise<{ service: string; path: string[] }> };
 
@@ -9,6 +12,8 @@ function failure(status: number, code: string, message: string) {
 }
 
 async function forward(request: NextRequest, context: Context): Promise<NextResponse> {
+  const guard = guardRequest(request, process.env, APP_PORT);
+  if (!guard.ok) return failure(guard.status, guard.code, guard.message);
   const { service, path } = await context.params;
   const backend = BACKENDS[service];
   const route = path.join('/');

@@ -29,6 +29,9 @@ npm run dev
 `/api/<service>/<path>` ส่งต่อไปที่ `<ORIGIN>/api/<path>` ตามทะเบียนใน `lib/backends.ts`
 ซึ่งกำหนด method และ path ที่อนุญาต, การส่งต่อ `Authorization` และ header ฝั่ง server
 ของแต่ละ backend จึงย้าย backend ไปเครื่องอื่นหรือเพิ่ม replica ได้โดยแก้แค่ env
+proxy ผ่าน `lib/request-guard.ts` ก่อนเสมอ: `Host` ต้องเป็น loopback บนพอร์ตแอป (`PORT` หรือ 3600)
+เพื่อกัน DNS rebinding และ POST/PATCH ต้องมาจาก origin เดียวกันพร้อม `Content-Type: application/json`
+ไม่เช่นนั้นตอบ 403/415 โดยไม่ส่งต่อ token ฝั่ง server
 
 ## เพิ่ม module
 
