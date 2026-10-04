@@ -12,6 +12,7 @@ export const MODULES: ModuleLink[] = [
   { id: 'production', label: 'งานผลิต', description: 'คลังไฟล์ ส่งต่อข้ามเครื่องมือ ตรวจงาน ส่งมอบ', href: '/production', migrated: true },
   { id: 'knowledge', label: 'คลังความรู้', description: 'ค้นเอกสารและความสัมพันธ์', href: '/knowledge', migrated: true },
   { id: 'cloud', label: 'คลาวด์', description: 'ผู้ให้บริการ ค่าใช้จ่าย และทรัพยากร (อ่านอย่างเดียว)', href: '/cloud', migrated: true },
+  { id: 'ai-usage', label: 'AI Usage', description: 'โควตา Claude และ Codex ค่าสมาชิก และเตือนก่อนรีเซ็ต', href: '/ai-usage', migrated: true },
   { id: 'accounts', label: 'บัญชี', description: 'บัญชีทุกแพลตฟอร์มและสถานะ (อ่านอย่างเดียว)', href: '/accounts', migrated: true },
   { id: 'integrations', label: 'แอปและ API', description: 'แอปภายนอกที่เชื่อมแล้วและที่วางแผนไว้ (อ่านอย่างเดียว)', href: '/integrations', migrated: true },
   { id: 'saas', label: 'SaaS ฟรี', description: 'แคตตาล็อกบริการ free tier และ starter stacks (อ่านอย่างเดียว)', href: '/saas', migrated: true },

@@ -45,6 +45,11 @@ export const BACKENDS: Record<string, Backend> = {
     methods: ['GET'], timeoutMs: 15_000,
     routes: [/^v1\/cloud\/usage$/, /^v1\/paas\/inventory$/, /^v1\/paas\/actions$/],
   },
+  'ai-usage': {
+    id: 'ai-usage', label: 'AI Usage', originEnv: 'AI_USAGE_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3520',
+    methods: ['GET'], timeoutMs: 8_000,
+    routes: [/^v1\/ai-usage$/],
+  },
   accounts: {
     id: 'accounts', label: 'Accounts', originEnv: 'ACCOUNTS_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3470',
     methods: ['GET'], timeoutMs: 8_000,

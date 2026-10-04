@@ -29,6 +29,7 @@ parity('Solo Web signer and installed Python service verifier', () => {
     ['integrations', 'integrations-api', 'integrations:read'],
     ['saas', 'saas-catalog-api', 'saas:read'],
     ['knowledge', 'knowledge-api', 'knowledge:read'],
+    ['ai-usage', 'ai-usage-api', 'ai-usage:read'],
   ];
   it.each(services)('%s token is accepted only by its declared backend', async (service, audience, scope) => {
     const { publicKey, privateKey } = await generateKeyPair('RS256', { extractable: true });

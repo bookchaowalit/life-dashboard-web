@@ -9,6 +9,7 @@
 | งานผลิต | `/production` | `PRODUCTION_HUB_API_ORIGIN` | `http://127.0.0.1:3460` |
 | คลังความรู้ | `/knowledge` | `KNOWLEDGE_API_ORIGIN` | `http://127.0.0.1:3430` |
 | คลาวด์ | `/cloud` | `CLOUD_API_ORIGIN` | `http://127.0.0.1:3440` |
+| AI Usage | `/ai-usage` | `AI_USAGE_API_ORIGIN` | `http://127.0.0.1:3520` |
 | บัญชี | `/accounts` | `ACCOUNTS_API_ORIGIN` | `http://127.0.0.1:3470` |
 | แอปและ API | `/integrations` | `INTEGRATIONS_API_ORIGIN` | `http://127.0.0.1:3480` |
 | SaaS ฟรี | `/saas` | `SAAS_CATALOG_API_ORIGIN` | `http://127.0.0.1:3490` |
@@ -27,6 +28,21 @@ npm run dev
 ```
 
 เปิด `http://127.0.0.1:3600`
+
+## AI Usage
+
+เปิด metadata API ด้วย `PYTHONPATH=packages/service-auth .venv/bin/python services/ai-usage-api/server.py` จาก repository root
+แล้วเปิด `/ai-usage` ดู Claude/Codex แยกโควตาแต่ละรอบ ค่าสมาชิกรายเดือน และคำเตือนก่อนรีเซ็ต
+ราคากับแพ็กอ่านจาก configuration ของ backend ไม่ฝังข้อมูลบัญชีหรือราคาเจ้าของใน frontend
+ดูการตั้งค่า collector และค่าสมาชิกที่ [AI Usage API](../../services/ai-usage-api/README.md)
+ใน hosted mode ตั้ง `AI_USAGE_API_ORIGIN` เป็น HTTPS และ `AI_USAGE_API_ALLOW_REMOTE=true`
+พร้อม service-auth issuer, owner allowlist และ public key ฝั่ง backend ตามรูปแบบเดียวกับ metadata APIs
+
+หน้าเว็บอ่านใหม่ทุก 60 วินาทีเมื่อ visible; ข้อมูลเก่าหรือผิดพลาดระบุชัดเจน และรอบที่เลยเวลารีเซ็ต
+ไม่ถือเป็นโควตาปัจจุบัน ปุ่มแจ้งเตือนขอ browser permission เมื่อผู้ใช้กดเท่านั้น ไม่มี service worker
+หรือการส่งข้อความภายนอก จึงต้องเปิดหน้านี้ไว้ การแจ้งเตือนใช้เฉพาะ snapshot สดและบันทึกเฉพาะ
+ID ของเหตุการณ์กับเวลารีเซ็ตใน localStorage เพื่อไม่เตือนซ้ำในรอบเดิม
+ค่า API ที่เรียกเก็บจริงยังไม่เชื่อมต่อ; ค่าเซสชันเป็นค่าประเมิน ไม่รวมเป็นค่า API หรือมูลค่าการใช้ทั้งเดือน
 
 ## Proxy
 
@@ -63,7 +79,7 @@ logout รับ POST ที่ Origin ตรงกันและลบ cookies
 BFF ออก RS256 token ใหม่ต่อ request: `iss=SOLO_WEB_PUBLIC_ORIGIN` ที่ normalize แล้ว, `sub=OIDC sub`,
 `tenant_id=owner`, `iat`, `nbf`, `exp<=iat+120` และ `jti` ใหม่ โดย expiry ไม่เกิน owner session
 audience/scope คือ `accounts-api`/`accounts:read`, `integrations-api`/`integrations:read`,
-`saas-catalog-api`/`saas:read`, `knowledge-api`/`knowledge:read`
+`saas-catalog-api`/`saas:read`, `knowledge-api`/`knowledge:read`, `ai-usage-api`/`ai-usage:read`
 Today/Cloud/Production บน hosted mode ตอบ `service_auth_unavailable` จน backend รองรับ scoped owner auth;
 legacy Hub token ใช้เฉพาะ explicit nonproduction loopback demo
 

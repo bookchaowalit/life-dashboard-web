@@ -127,6 +127,7 @@ const SERVICES: Record<string, { audience: string; scope: string }> = {
   integrations: { audience: 'integrations-api', scope: 'integrations:read' },
   saas: { audience: 'saas-catalog-api', scope: 'saas:read' },
   knowledge: { audience: 'knowledge-api', scope: 'knowledge:read' },
+  'ai-usage': { audience: 'ai-usage-api', scope: 'ai-usage:read' },
 };
 
 /** Share the exact signing-key requirements between readiness and request signing. */
