@@ -55,6 +55,11 @@ export const BACKENDS: Record<string, Backend> = {
     methods: ['GET'], forwardAuthorization: true, timeoutMs: 8_000,
     routes: [/^v1\/integrations$/],
   },
+  saas: {
+    id: 'saas', label: 'SaaS Catalog', originEnv: 'SAAS_CATALOG_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3490',
+    methods: ['GET'], forwardAuthorization: true, timeoutMs: 8_000,
+    routes: [/^v1\/saas$/],
+  },
   production: {
     id: 'production', label: 'Production', originEnv: 'PRODUCTION_HUB_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3460',
     methods: ['GET', 'POST'], forwardAuthorization: false, timeoutMs: 30 * 60_000,

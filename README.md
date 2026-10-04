@@ -11,6 +11,7 @@
 | คลาวด์ | `/cloud` | `CLOUD_API_ORIGIN` | `http://127.0.0.1:3440` |
 | บัญชี | `/accounts` | `ACCOUNTS_API_ORIGIN` | `http://127.0.0.1:3470` |
 | แอปและ API | `/integrations` | `INTEGRATIONS_API_ORIGIN` | `http://127.0.0.1:3480` |
+| SaaS ฟรี | `/saas` | `SAAS_CATALOG_API_ORIGIN` | `http://127.0.0.1:3490` |
 | CRM, วิดีโอ | ลิงก์ไปแอปเดิม | — | ย้ายในรอบถัดไป |
 
 ## เปิดใช้งาน

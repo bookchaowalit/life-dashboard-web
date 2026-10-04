@@ -37,6 +37,8 @@ describe('backend registry', () => {
     expect(isAllowed(BACKENDS.accounts, 'GET', 'v1/accounts/anonymous')).toBe(false);
     expect(isAllowed(BACKENDS.integrations, 'GET', 'v1/integrations')).toBe(true);
     expect(isAllowed(BACKENDS.integrations, 'PATCH', 'v1/integrations')).toBe(false);
+    expect(isAllowed(BACKENDS.saas, 'GET', 'v1/saas')).toBe(true);
+    expect(isAllowed(BACKENDS.saas, 'GET', 'v1/saas/../secrets')).toBe(false);
   });
 
   it('defaults to loopback and refuses remote origins unless explicitly allowed over HTTPS', () => {
