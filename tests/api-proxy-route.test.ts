@@ -17,6 +17,7 @@ function request(method: string, url: string, headers: Record<string, string>, b
 beforeEach(() => {
   upstream = [];
   vi.stubEnv('PORT', '');
+  vi.stubEnv('SOLO_WEB_LOCAL_DEMO', 'true');
   vi.stubEnv('PRODUCTION_HUB_API_ORIGIN', 'http://127.0.0.1:3460');
   vi.stubEnv('PRODUCTION_HUB_API_TOKEN', 'test-token');
   vi.stubEnv('TODAY_API_ORIGIN', 'http://127.0.0.1:3410');
@@ -86,6 +87,22 @@ describe('solo-web proxy guard for state-changing requests', () => {
 });
 
 describe('solo-web proxy guard for reads', () => {
+  it('denies an anonymous local read unless demo is explicitly enabled', async () => {
+    vi.stubEnv('SOLO_WEB_LOCAL_DEMO', 'false');
+    const response = await GET(request('GET', `http://${HOST}/api/today/v1/today`, { host: HOST }), context('today', 'v1/today'));
+    expect(response.status).toBe(401);
+    expect(upstream).toHaveLength(0);
+  });
+
+  it('denies anonymous HTTPS reads and ignores a forged forwarded host', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SOLO_WEB_PUBLIC_ORIGIN', 'https://solo.example');
+    const response = await GET(request('GET', 'https://solo.example/api/accounts/v1/accounts', {
+      host: 'solo.example', 'x-forwarded-host': 'localhost:3600', authorization: 'Bearer fake-owner',
+    }), context('accounts', 'v1/accounts'));
+    expect(response.status).toBe(401);
+    expect(upstream).toHaveLength(0);
+  });
   it('refuses a rebinding Host', async () => {
     const response = await GET(request('GET', 'http://rebind.example:3600/api/today/v1/today', {
       host: 'rebind.example:3600',

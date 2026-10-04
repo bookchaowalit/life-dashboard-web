@@ -23,6 +23,7 @@ export default function ShellNav() {
           </li>
         ))}
       </ul>
+      {pathname !== '/login' && <form action="/api/auth/logout" method="post"><button type="submit">ออกจากระบบ</button></form>}
     </nav>
   );
 }

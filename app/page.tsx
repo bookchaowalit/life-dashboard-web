@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { requirePageOwner } from '@/lib/page-auth';
 
 import { MODULES } from '@/lib/modules';
 
-export default function Home() {
+export default async function Home() {
+  await requirePageOwner();
   return (
     <main className="shell-home">
       <h1>Solo Empire</h1>

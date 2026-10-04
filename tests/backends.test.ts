@@ -5,6 +5,18 @@ import { BACKENDS, isAllowed, resolveOrigin } from '../lib/backends';
 const SHA = `sha256:${'a'.repeat(64)}`;
 
 describe('backend registry', () => {
+  it('never falls back to loopback in production', () => {
+    expect(resolveOrigin(BACKENDS.today, { NODE_ENV: 'production' }).ok).toBe(false);
+    expect(resolveOrigin(BACKENDS.today, { NODE_ENV: 'production', TODAY_API_ORIGIN: 'http://localhost:3410' }).ok).toBe(false);
+  });
+  it('refuses backend credentials, paths, queries, fragments and remote loopback', () => {
+    for (const value of ['https://user:pass@api.example', 'https://api.example/other', 'https://api.example?url=evil', 'https://api.example#fragment', 'https://127.0.0.1', 'https://127.0.0.2', 'https://0.0.0.0', 'https://host.localhost']) {
+      expect(resolveOrigin(BACKENDS.accounts, { ACCOUNTS_API_ORIGIN: value, ACCOUNTS_API_ALLOW_REMOTE: 'true' }).ok).toBe(false);
+    }
+  });
+  it('bounds every backend request to at most 30 seconds', () => {
+    expect(Math.max(...Object.values(BACKENDS).map((b) => b.timeoutMs))).toBeLessThanOrEqual(30_000);
+  });
   it('gives every module its own origin variable', () => {
     const envs = Object.values(BACKENDS).map((backend) => backend.originEnv);
     expect(new Set(envs).size).toBe(envs.length);
