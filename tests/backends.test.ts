@@ -32,6 +32,9 @@ describe('backend registry', () => {
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/formats')).toBe(true);
     expect(isAllowed(BACKENDS.production, 'GET', 'v1/path/../../etc')).toBe(false);
     expect(isAllowed(BACKENDS.cloud, 'GET', 'v1/paas/execute')).toBe(false);
+    expect(isAllowed(BACKENDS.accounts, 'GET', 'v1/accounts')).toBe(true);
+    expect(isAllowed(BACKENDS.accounts, 'POST', 'v1/accounts')).toBe(false);
+    expect(isAllowed(BACKENDS.accounts, 'GET', 'v1/accounts/anonymous')).toBe(false);
   });
 
   it('defaults to loopback and refuses remote origins unless explicitly allowed over HTTPS', () => {
