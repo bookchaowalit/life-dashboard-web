@@ -1,0 +1,8 @@
+system_id: solo-web
+prefix: SWB
+brand: "SOLO WEB"
+subtitle: "หน้าเว็บเดียวของ Solo Empire สำหรับเจ้าของ: shell + thin BFF เรียก backend แยกราย module"
+footer: "Solo Web — ฉบับร่างเพื่อพิจารณา"
+color: "#2b3a67"
+audience: internal
+tier: L2
