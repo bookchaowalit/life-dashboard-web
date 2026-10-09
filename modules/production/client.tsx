@@ -793,7 +793,7 @@ export default function ConsoleClient() {
       </header>
       {health === 'down' && (
         <p className="notice error" role="alert">
-          ติดต่อ Production Hub ไม่ได้ — เปิดด้วย <code>python -m production_hub.api</code> ในโฟลเดอร์ services/production-hub แล้วรีเฟรช
+          ติดต่อ Production Hub ไม่ได้ — เปิดด้วย <code>python -m production_hub.api</code> ในโฟลเดอร์ services/production-hub ของ book-production-platform แล้วรีเฟรช
         </p>
       )}
       <nav className="tabs" role="tablist" aria-label="ส่วนของ Console">

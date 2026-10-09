@@ -18,7 +18,8 @@
 ## เปิดใช้งาน
 
 เปิด backend ที่ต้องใช้แยกกัน (เช่น `python services/today-api/server.py`,
-`python -m production_hub.api` ใน `services/production-hub`) แล้ว:
+`python -m production_hub.api` ใน `services/production-hub` ของ
+repository `book-production-platform`) แล้ว:
 
 ```bash
 cd apps/solo-web
