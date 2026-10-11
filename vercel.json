@@ -4,6 +4,11 @@
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
   "functions": {
-    "app/api/**/route.ts": { "maxDuration": 60 }
-  }
+    "app/api/**/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "regions": [
+    "sin1"
+  ]
 }
