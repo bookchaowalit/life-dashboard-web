@@ -57,7 +57,12 @@ async function unseal(value: string, audience: string, origin: string, env: Env)
 
 /** Only the locally validated ID-token claims enter an encrypted browser session. */
 export async function createOwnerSession(sub: string, idpExpiration: number, origin: string, env: Env) {
-  if (!authReadiness(env).ready || !subjects(env).includes(sub)) throw new Error('owner_not_allowed');
+  if (!authReadiness(env).ready) throw new Error('owner_not_allowed');
+  if (!subjects(env).includes(sub)) {
+    // Server log only (owner-visible): lets the owner find their own `sub` to add to SOLO_WEB_OWNER_SUBJECTS.
+    console.warn(JSON.stringify({ event: 'solo-web.owner_not_allowed', sub }));
+    throw new Error('owner_not_allowed');
+  }
   const now = Math.floor(Date.now() / 1000);
   const expires = Math.min(idpExpiration, now + 3600);
   if (!Number.isSafeInteger(expires) || expires <= now) throw new Error('session_expired');
