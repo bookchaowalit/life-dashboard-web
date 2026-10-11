@@ -1,0 +1,181 @@
+{
+  "scope": "metadata_staging",
+  "status": "scaffold_staged_not_deployed",
+  "active_modules": [
+    "accounts",
+    "integrations",
+    "saas",
+    "knowledge"
+  ],
+  "timezone": "Asia/Bangkok",
+  "resource_approval": {
+    "approved": true,
+    "monthly_budget_currency": "USD",
+    "monthly_budget_ceiling": null,
+    "decision_reference": "owner_value_first_choice_2026-10-05",
+    "approval_kind": "value_based_conditional",
+    "planning_monthly_range": [30, 50],
+    "planning_range_scope": "metadata_phase_one_only",
+    "planning_range_is_hard_cap": false,
+    "use_existing_subscriptions_first": true,
+    "paid_when_required_by_actual_usage": true,
+    "subscription_change_performed": false
+  },
+  "metadata_publication_review": {
+    "approved": false,
+    "sanitized_build_context_verified": false,
+    "decision_reference": ""
+  },
+  "web": {
+    "provider": "vercel",
+    "team_id": "team_APNFvAx5YstCawatQ1MBneND",
+    "project_id": "prj_64OzlGrNZ3Df6DKJplKhCSHrIcQo",
+    "environment": "preview",
+    "root_directory": "apps/solo-web",
+    "public_origin": "",
+    "preview_origins": [],
+    "region": "",
+    "plan": "",
+    "oidc_callback_path": "/api/auth/callback",
+    "readiness_path": "/api/health",
+    "source_revision": "",
+    "rollback_revision": "",
+    "proposed_project_name": "solo-web-staging",
+    "resource_state": "created_empty",
+    "framework": "nextjs",
+    "node_version": "22.x",
+    "configuration_state": "framework_root_node_set",
+    "reserved_domain": "solo-web-staging.vercel.app",
+    "reserved_domain_verified": true,
+    "domain_runtime_state": "not_deployed_not_assigned_to_preview"
+  },
+  "apis": [
+    {
+      "service": "accounts-api",
+      "provider": "railway",
+      "project_id": "04f2c2f1-165e-414b-b342-e660f6309e2c",
+      "environment_id": "22782810-d4d7-45e3-a872-3e4e5bd83b65",
+      "environment": "staging",
+      "service_id": "873eff5b-c18f-4dfa-8bf2-e3344f48f778",
+      "region": "us-west2",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/accounts-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": "",
+      "resource_state": "staged-create"
+    },
+    {
+      "service": "integrations-api",
+      "provider": "railway",
+      "project_id": "04f2c2f1-165e-414b-b342-e660f6309e2c",
+      "environment_id": "22782810-d4d7-45e3-a872-3e4e5bd83b65",
+      "environment": "staging",
+      "service_id": "0cd5abf0-520a-4bbb-9cfa-88ed10439462",
+      "region": "us-west2",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/integrations-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": "",
+      "resource_state": "staged-create"
+    },
+    {
+      "service": "saas-catalog-api",
+      "provider": "railway",
+      "project_id": "04f2c2f1-165e-414b-b342-e660f6309e2c",
+      "environment_id": "22782810-d4d7-45e3-a872-3e4e5bd83b65",
+      "environment": "staging",
+      "service_id": "2b112ae3-7b24-4f51-b77d-1c7c1459566a",
+      "region": "us-west2",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/saas-catalog-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": "",
+      "resource_state": "staged-create"
+    },
+    {
+      "service": "knowledge-api",
+      "provider": "railway",
+      "project_id": "04f2c2f1-165e-414b-b342-e660f6309e2c",
+      "environment_id": "22782810-d4d7-45e3-a872-3e4e5bd83b65",
+      "environment": "staging",
+      "service_id": "7c72274e-783f-4419-a824-2376e0a20796",
+      "region": "us-west2",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/knowledge-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": "",
+      "resource_state": "staged-create"
+    }
+  ],
+  "observed_at": "2026-10-04",
+  "oidc": {
+    "provider": "google",
+    "owner_choice_confirmed": true,
+    "issuer": "https://accounts.google.com",
+    "application_type": "web_application",
+    "proposed_application_name": "Solo Web staging",
+    "requested_callback_uri": "https://solo-web-staging.vercel.app/api/auth/callback",
+    "client_state": "owner_reported_created_in_infisical_reference_required",
+    "owner_subject_state": "verified_subject_required",
+    "credential_reference": "",
+    "credential_discovery": {
+      "state": "vault_metadata_access_blocked",
+      "observed_at": "2026-10-05",
+      "repository_candidate": {
+        "project_id": "d0d84520-c3d0-48da-980c-a987c3077122",
+        "environment_default": "dev",
+        "folder_default": "/google",
+        "client_id_key": "GOOGLE_CLIENT_ID",
+        "client_secret_key": "GOOGLE_CLIENT_SECRET",
+        "purpose": "existing_google_integrations_not_verified_for_solo_web",
+        "source": "infra/scripts/utils/secret_resolver.py"
+      },
+      "vault_verified": false,
+      "secret_values_read": false,
+      "note": "PreToolUse rejected even folder-only metadata discovery. No authenticated metadata-only API channel or Infisical tool is available in this session; do not substitute the repository candidate for the Web application reference."
+    }
+  },
+  "local_publication_review": {
+    "state": "draft_from_working_tree_not_deployable",
+    "services_exported": 4,
+    "file_hashes_verified": true,
+    "includes_uncommitted_changes": true,
+    "publication_status": "not_approved"
+  },
+  "scaffold_approval": {
+    "approved": true,
+    "scope": "empty_vercel_project_private_railway_project_and_staged_service_names",
+    "decision_reference": "owner_requested_continuation_2026-10-04"
+  },
+  "railway": {
+    "workspace_id": "b98db09f-4d8f-4cb5-a4cc-2340f8381662",
+    "project_id": "04f2c2f1-165e-414b-b342-e660f6309e2c",
+    "project_name": "solo-metadata-staging",
+    "environment_id": "22782810-d4d7-45e3-a872-3e4e5bd83b65",
+    "environment_name": "staging",
+    "staged_patch_id": "3f7f0d9c-726a-4620-8a16-11a7eb249b31",
+    "patch_state": "STAGED",
+    "configuration_state": "local_railway_toml_only",
+    "configuration_note": "Provider update tool reported Service instance not found for staged-create; no runtime activated."
+  },
+  "activation_prerequisites": [
+    "verified_account_tier_and_usage_controls",
+    "owner_oidc_configuration",
+    "metadata_publication_review",
+    "committed_release_context",
+    "provider_configuration_and_auth_variables",
+    "target_origins_and_hosted_acceptance"
+  ]
+}

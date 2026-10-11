@@ -1,0 +1,98 @@
+{
+  "scope": "metadata_staging",
+  "status": "target_selection_required",
+  "active_modules": ["accounts", "integrations", "saas", "knowledge"],
+  "timezone": "Asia/Bangkok",
+  "resource_approval": {
+    "approved": false,
+    "monthly_budget_currency": "THB",
+    "monthly_budget_ceiling": null,
+    "decision_reference": ""
+  },
+  "metadata_publication_review": {
+    "approved": false,
+    "sanitized_build_context_verified": false,
+    "decision_reference": ""
+  },
+  "web": {
+    "provider": "vercel",
+    "team_id": "",
+    "project_id": "",
+    "environment": "preview",
+    "root_directory": "apps/solo-web",
+    "public_origin": "",
+    "preview_origins": [],
+    "region": "",
+    "plan": "",
+    "oidc_callback_path": "/api/auth/callback",
+    "readiness_path": "/api/health",
+    "source_revision": "",
+    "rollback_revision": ""
+  },
+  "apis": [
+    {
+      "service": "accounts-api",
+      "provider": "railway",
+      "project_id": "",
+      "environment_id": "",
+      "environment": "staging",
+      "service_id": "",
+      "region": "",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/accounts-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": ""
+    },
+    {
+      "service": "integrations-api",
+      "provider": "railway",
+      "project_id": "",
+      "environment_id": "",
+      "environment": "staging",
+      "service_id": "",
+      "region": "",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/integrations-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": ""
+    },
+    {
+      "service": "saas-catalog-api",
+      "provider": "railway",
+      "project_id": "",
+      "environment_id": "",
+      "environment": "staging",
+      "service_id": "",
+      "region": "",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/saas-catalog-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": ""
+    },
+    {
+      "service": "knowledge-api",
+      "provider": "railway",
+      "project_id": "",
+      "environment_id": "",
+      "environment": "staging",
+      "service_id": "",
+      "region": "",
+      "plan": "",
+      "origin": "",
+      "readiness_path": "/ready",
+      "dockerfile": "services/knowledge-api/Dockerfile",
+      "source_revision": "",
+      "snapshot_sha256": "",
+      "rollback_revision": ""
+    }
+  ]
+}
