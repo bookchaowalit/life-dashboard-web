@@ -1,0 +1,50 @@
+.m-cells { min-height: calc(100vh - 52px); background: #f7f7f4; color: #1d211f; font-family: 'Noto Sans Thai', Tahoma, sans-serif; }
+.m-cells * { box-sizing: border-box; }
+.m-cells a { color: inherit; }
+.m-cells .cells-main { max-width: 1000px; margin: 0 auto; padding: 32px 24px 56px; }
+.m-cells .cells-head h1 { margin: 0 0 4px; font-size: 1.7rem; }
+.m-cells .cells-head p, .m-cells .cells-summary { margin: 0 0 20px; color: #5a5f57; }
+.m-cells .cells-section { margin: 0 0 28px; }
+.m-cells .cells-section h2, .m-cells .cells-card h2 { margin: 0 0 10px; font-size: 1.1rem; }
+.m-cells .cells-section h2 small { color: #6e6e67; font-weight: 400; margin-left: 6px; }
+.m-cells .cells-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #d3d4cb; }
+.m-cells .cells-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #d3d4cb; }
+.m-cells .cells-row-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.m-cells .cells-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.m-cells .cells-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: #6e6e67; font-size: 12px; }
+.m-cells .cells-pill { display: inline-block; padding: 1px 8px; border: 1px solid #d3d4cb; border-radius: 10px; font-size: 11px; }
+.m-cells .st-in_progress, .m-cells .st-active, .m-cells .st-approved { background: #c8f25b; border-color: #1d211f; color: #1d211f; }
+.m-cells .st-blocked { color: #a53327; border-color: #d49b93; }
+.m-cells .st-done, .m-cells .st-completed { color: #6e6e67; }
+.m-cells .cells-danger { color: #a53327; font-weight: 600; }
+.m-cells .cells-empty { color: #6e6e67; margin: 4px 0 0; }
+.m-cells button { min-height: 34px; padding: 0 12px; border: 1px solid #1d211f; background: transparent; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+.m-cells button.primary { background: #1d211f; color: #fff; }
+.m-cells button:disabled { opacity: .6; cursor: wait; }
+.m-cells button:focus-visible { outline: 2px solid #1d211f; outline-offset: 2px; }
+.m-cells .cells-action { display: inline-flex; flex-direction: column; gap: 2px; }
+.m-cells .cells-action small { color: #a53327; }
+.m-cells .cells-card { margin: 0 0 16px; padding: 18px; border: 1px solid #d3d4cb; border-radius: 8px; background: #fff; }
+.m-cells .cells-list.compact { margin-top: 8px; font-size: 13px; }
+.m-cells .cells-list.compact li { padding: 6px 0; border-bottom: 1px solid #eee; }
+.m-cells .cells-progress { display: inline-block; width: 220px; max-width: 60%; height: 8px; background: #e6e7df; border-radius: 4px; overflow: hidden; vertical-align: middle; }
+.m-cells .cells-progress > span { display: block; height: 100%; background: #1d211f; }
+.m-cells .cells-progress-line { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.m-cells .cells-week { display: flex; gap: 4px; margin-top: 4px; }
+.m-cells .cells-week span { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid #d3d4cb; border-radius: 4px; font-size: 11px; color: #6e6e67; }
+.m-cells .cells-week span.on { background: #1d211f; color: #fff; border-color: #1d211f; }
+.m-cells .cells-week span.today { outline: 2px solid #c8f25b; outline-offset: 1px; }
+.m-cells .cells-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.m-cells .cells-total { padding: 16px; border: 1px solid #d3d4cb; border-radius: 8px; background: #fff; }
+.m-cells .cells-total span { display: block; color: #6e6e67; font-size: 12px; margin-bottom: 6px; }
+.m-cells .cells-total strong { display: block; font-size: 1.3rem; }
+.m-cells .cells-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+.m-cells .cells-table th, .m-cells .cells-table td { padding: 8px 10px; border-bottom: 1px solid #e6e7df; text-align: left; }
+.m-cells .cells-dl { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 0; }
+.m-cells .cells-dl dt { color: #6e6e67; }
+.m-cells .cells-dl dd { margin: 0; white-space: pre-wrap; }
+.m-cells .cells-unavailable { padding: 20px; border: 1px solid #d49b93; border-radius: 8px; background: #fff; }
+.m-cells .cells-unavailable strong { color: #a53327; font-size: 1.1rem; }
+.m-cells .cells-unavailable p { margin: 6px 0; }
+.m-cells .cells-unavailable small { color: #6e6e67; }
+@media (max-width: 700px) { .m-cells .cells-row { flex-direction: column; align-items: flex-start; } .m-cells .cells-dl { grid-template-columns: 1fr; } }

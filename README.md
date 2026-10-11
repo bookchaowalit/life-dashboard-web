@@ -5,7 +5,11 @@
 
 | Module | หน้า | Backend (env) | ค่าเริ่มต้น |
 |---|---|---|---|
-| วันนี้ | `/today` | `TODAY_API_ORIGIN` | `http://127.0.0.1:3410` |
+| วันนี้/งาน | `/tasks` (`/today` redirect มาที่นี่) | `EMPIRE_TASKS_API` + `EMPIRE_CELL_TOKEN` | ไม่มี (ต้องตั้งค่า) |
+| เป้าหมาย | `/goals` | `EMPIRE_GOALS_API` + `EMPIRE_CELL_TOKEN` | ไม่มี |
+| นิสัย | `/habits` | `EMPIRE_HABITS_API` + `EMPIRE_CELL_TOKEN` | ไม่มี |
+| การตัดสินใจ | `/decisions`, `/decisions/<id>` | `EMPIRE_DECISIONS_API` + `EMPIRE_CELL_TOKEN` | ไม่มี |
+| รายได้ | `/revenue` | `EMPIRE_CRM_LEDGER_API` + `EMPIRE_CRM_LEDGER_TOKEN` | ไม่มี |
 | งานผลิต | `/production` | `PRODUCTION_HUB_API_ORIGIN` | `http://127.0.0.1:3460` |
 | คลังความรู้ | `/knowledge` | `KNOWLEDGE_API_ORIGIN` | `http://127.0.0.1:3430` |
 | คลาวด์ | `/cloud` | `CLOUD_API_ORIGIN` | `http://127.0.0.1:3440` |
@@ -15,9 +19,37 @@
 | SaaS ฟรี | `/saas` | `SAAS_CATALOG_API_ORIGIN` | `http://127.0.0.1:3490` |
 | CRM, วิดีโอ | ลิงก์ไปแอปเดิม | — | ย้ายในรอบถัดไป |
 
+## Owner modules ที่เรียก cell โดยตรง (server side)
+
+หน้า `/tasks`, `/goals`, `/habits`, `/decisions`, `/revenue` เป็น server component ที่อ่าน cell API ตรง ๆ
+จาก `lib/cells/*` (ไม่ผ่าน BFF proxy และไม่มีค่าใดอยู่ใน client bundle หรือ `NEXT_PUBLIC_*`)
+ทุกหน้าต้องมี owner session เหมือนโมดูลอื่น; ถ้า env ขาดหรือ cell ล้มเหลว หน้าจะแสดงสถานะ
+"ไม่พร้อมใช้งาน" แบบสั้น ไม่แสดง body ของ upstream หรือโทเค็น
+
+| ตัวแปร | ใช้ทำอะไร |
+|---|---|
+| `EMPIRE_TASKS_API` | Tasks API (empire-platform) |
+| `EMPIRE_GOALS_API` | goals cell |
+| `EMPIRE_HABITS_API` | habits cell |
+| `EMPIRE_DECISIONS_API` | decisions cell |
+| `EMPIRE_CELL_TOKEN` | automation token `solo-web` ตัวเดียวสำหรับทุก cell ข้างบน (audience ครบทุก cell; scope: read ทุก cell, `tasks.status:write`, `habits.habit:write`) |
+| `EMPIRE_CRM_LEDGER_API` | CRM ledger (income instance) |
+| `EMPIRE_CRM_LEDGER_TOKEN` | owner token ของ CRM ledger |
+
+URL ต้องเป็น https (http เฉพาะ loopback) ไม่มี credentials/query; ส่ง `Authorization: Bearer` และ
+`X-Empire-Channel: api` ไม่ตาม redirect และจำกัดเวลา 10 วินาทีต่อคำขอ
+
+Action เขียน (POST, ผ่าน Host/Origin/`application/json` guard เดียวกับ proxy และ owner session):
+
+- `POST /api/owner/tasks/status` `{number, status}`: `done` เรียก `/complete` ส่วนสถานะอื่นเป็น PATCH
+- `POST /api/owner/habits/log` `{habit_id, completed}`: บันทึกหรือยกเลิกของ "วันนี้" (เซิร์ฟเวอร์เลือกวันที่ตามเวลา Asia/Bangkok เอง)
+
+ทั้งสองเป็น idempotent โดยธรรมชาติ (ตั้งสถานะ/ upsert log รายวัน); Tasks API ยังไม่รองรับ `expected_version`
+หน้า decisions เป็นอ่านอย่างเดียว และซ่อนข้อความของรายการ `privacy_class=sensitive`
+
 ## เปิดใช้งาน
 
-เปิด backend ที่ต้องใช้แยกกัน (เช่น `python services/today-api/server.py`,
+เปิด backend ที่ต้องใช้แยกกัน (เช่น
 `python -m production_hub.api` ใน `services/production-hub` ของ
 repository `book-production-platform`) แล้ว:
 

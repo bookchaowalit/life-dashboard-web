@@ -1,13 +1,6 @@
-import TodayClient from '@/modules/today/client';
-import { requirePageOwner } from '@/lib/page-auth';
+import { redirect } from 'next/navigation';
 
-import '@/modules/today/module.css';
-
-export default async function Page() {
-  await requirePageOwner();
-  return (
-    <div className="m-today">
-      <TodayClient />
-    </div>
-  );
+/** `/today` moved into the tasks page; the local today-api it used is retired. */
+export default function Page() {
+  redirect('/tasks');
 }

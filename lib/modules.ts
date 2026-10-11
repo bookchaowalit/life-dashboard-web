@@ -8,7 +8,11 @@ export interface ModuleLink {
 }
 
 export const MODULES: ModuleLink[] = [
-  { id: 'today', label: 'วันนี้', description: 'งานที่ต้องทำวันนี้และความคืบหน้า', href: '/today', migrated: true },
+  { id: 'tasks', label: 'วันนี้/งาน', description: 'งานวันนี้ เกินกำหนด กำลังทำ เสร็จล่าสุด และเปลี่ยนสถานะงาน', href: '/tasks', migrated: true },
+  { id: 'goals', label: 'เป้าหมาย', description: 'เป้าหมาย ความคืบหน้า และงานของแต่ละเป้าหมาย (อ่านอย่างเดียว)', href: '/goals', migrated: true },
+  { id: 'habits', label: 'นิสัย', description: 'สตรีค บันทึกสัปดาห์นี้ และบันทึกวันนี้', href: '/habits', migrated: true },
+  { id: 'decisions', label: 'การตัดสินใจ', description: 'การตัดสินใจที่ยังเปิดอยู่และประวัติ (อ่านอย่างเดียว)', href: '/decisions', migrated: true },
+  { id: 'revenue', label: 'รายได้', description: 'ยอดรายได้ต่อสกุลเงิน รายการล่าสุด และใบแจ้งหนี้ที่ค้าง (อ่านอย่างเดียว)', href: '/revenue', migrated: true },
   { id: 'production', label: 'งานผลิต', description: 'คลังไฟล์ ส่งต่อข้ามเครื่องมือ ตรวจงาน ส่งมอบ', href: '/production', migrated: true },
   { id: 'knowledge', label: 'คลังความรู้', description: 'ค้นเอกสารและความสัมพันธ์', href: '/knowledge', migrated: true },
   { id: 'cloud', label: 'คลาวด์', description: 'ผู้ให้บริการ ค่าใช้จ่าย และทรัพยากร (อ่านอย่างเดียว)', href: '/cloud', migrated: true },
