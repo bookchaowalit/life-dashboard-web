@@ -1,0 +1,7 @@
+# Local build and test output; never part of a deploy (the Vercel CLI does not read .gitignore).
+.next/
+.next-e2e-*/
+test-results/
+playwright-report/
+.runtime/
+*.tsbuildinfo
