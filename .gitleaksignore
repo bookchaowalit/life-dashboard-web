@@ -1,0 +1,2 @@
+# regex that validates the PEM shape (scripts/staging-preflight.mjs), not a key (reviewed 2026-10-12)
+27f06ff12ba3fe2c772fdd0bde9ad4b071187b3c:scripts/staging-preflight.mjs:private-key:109
