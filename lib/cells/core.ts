@@ -25,6 +25,17 @@ export const CELLS = {
   habits: { id: 'habits', label: 'Habits', urlEnv: 'EMPIRE_HABITS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
   decisions: { id: 'decisions', label: 'Decisions', urlEnv: 'EMPIRE_DECISIONS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
   ledger: { id: 'ledger', label: 'CRM ledger', urlEnv: 'EMPIRE_CRM_LEDGER_API', tokenEnv: 'EMPIRE_CRM_LEDGER_TOKEN' },
+  // Finance: ten cells, read only (2026-10-12).
+  'finance-accounts': { id: 'finance-accounts', label: 'Finance accounts', urlEnv: 'EMPIRE_FINANCE_ACCOUNTS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'transactions': { id: 'transactions', label: 'Transactions', urlEnv: 'EMPIRE_TRANSACTIONS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'budgets': { id: 'budgets', label: 'Budgets', urlEnv: 'EMPIRE_BUDGETS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'cash-flow': { id: 'cash-flow', label: 'Cash flow', urlEnv: 'EMPIRE_CASH_FLOW_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'reconciliations': { id: 'reconciliations', label: 'Reconciliations', urlEnv: 'EMPIRE_RECONCILIATIONS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'business-assets': { id: 'business-assets', label: 'Business assets', urlEnv: 'EMPIRE_BUSINESS_ASSETS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'investments': { id: 'investments', label: 'Investments', urlEnv: 'EMPIRE_INVESTMENTS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'liabilities': { id: 'liabilities', label: 'Liabilities', urlEnv: 'EMPIRE_LIABILITIES_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'subscriptions': { id: 'subscriptions', label: 'Subscriptions', urlEnv: 'EMPIRE_SUBSCRIPTIONS_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
+  'tax': { id: 'tax', label: 'Tax', urlEnv: 'EMPIRE_TAX_API', tokenEnv: 'EMPIRE_CELL_TOKEN' },
 } as const satisfies Record<string, CellSpec>;
 export type CellId = keyof typeof CELLS;
 
