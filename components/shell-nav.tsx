@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { MODULES } from '@/lib/modules';
+import { VISIBLE_MODULES } from '@/lib/modules';
 
 export default function ShellNav() {
   const pathname = usePathname();
@@ -11,7 +11,7 @@ export default function ShellNav() {
     <nav className="shell-nav" aria-label="เมนูหลัก">
       <Link href="/" className="shell-brand">Solo Empire</Link>
       <ul>
-        {MODULES.map((module) => (
+        {VISIBLE_MODULES.map((module) => (
           <li key={module.id}>
             {module.migrated ? (
               <Link href={module.href} aria-current={pathname.startsWith(module.href) ? 'page' : undefined}>
