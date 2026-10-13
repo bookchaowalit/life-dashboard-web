@@ -113,6 +113,15 @@
 .m-integrations .definitions { margin-top:12px; padding:14px 16px; border:1px solid var(--line); background:#fff; }
 .m-integrations .definitions summary { cursor:pointer; font-weight:600; }
 .m-integrations .definitions dl { margin-top:12px; }
+/* Platform inventory extension, scoped to the existing integrations module. */
+.m-integrations .platform-inventory { margin-top:24px; padding:20px; border:1px solid var(--line); background:#fff; }
+.m-integrations .platform-inventory .section-heading { margin-top:0; }
+.m-integrations .platform-inventory > p { color:var(--muted); }
+.m-integrations .platform-inventory label { display:flex; gap:8px; align-items:center; }
+.m-integrations .inventory-meta { padding-top:10px; font-size:13px; }
+.m-integrations .inventory-table { margin-top:16px; overflow-x:auto; }
+.m-integrations .inventory-table table { min-width:850px; }
+.m-integrations .inventory-table a { color:var(--accent); }
 @media (max-width:1100px) {
 .m-integrations .intro { grid-template-columns:1fr; }
 }
@@ -122,6 +131,9 @@
 .m-integrations .metrics > div:nth-child(2) { border-right:0; }
 .m-integrations .metrics > div:nth-child(-n+2) { border-bottom:1px solid var(--line); }
 .m-integrations .mode { display:none; }
+.m-integrations .platform-inventory { padding:14px; }
+.m-integrations .inventory-table table { min-width:0; }
+.m-integrations .inventory-table td { padding:6px 0; }
 .m-integrations table, .m-integrations thead, .m-integrations tbody, .m-integrations tr, .m-integrations td { display:block; }
 .m-integrations thead { display:none; }
 .m-integrations tr { padding:8px 0; border-top:1px solid var(--line); }
