@@ -58,7 +58,7 @@ export const BACKENDS: Record<string, Backend> = {
   integrations: {
     id: 'integrations', label: 'Integrations', originEnv: 'INTEGRATIONS_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3480',
     methods: ['GET'], timeoutMs: 8_000,
-    routes: [/^v1\/integrations$/],
+    routes: [/^v1\/integrations$/, /^v1\/integrations\/platforms$/],
   },
   saas: {
     id: 'saas', label: 'SaaS Catalog', originEnv: 'SAAS_CATALOG_API_ORIGIN', defaultOrigin: 'http://127.0.0.1:3490',

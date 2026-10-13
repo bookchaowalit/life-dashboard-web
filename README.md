@@ -19,6 +19,19 @@
 | SaaS ฟรี | `/saas` | `SAAS_CATALOG_API_ORIGIN` | `http://127.0.0.1:3490` |
 | CRM, วิดีโอ | ลิงก์ไปแอปเดิม | — | ย้ายในรอบถัดไป |
 
+## Inventory ช่องทางตามแพลตฟอร์ม
+
+หน้า `/integrations` อ่านทะเบียนเดิมและ inventory แยกกันผ่าน BFF ที่มี owner session เดิม
+เส้นทางอ่านใหม่คือ `GET /api/integrations/v1/integrations/platforms` →
+`GET /api/v1/integrations/platforms` ของ Integrations API รองรับตัวกรอง `platform`, `app`, `route`, `q`.
+ค่าเริ่มต้นเลือก `codex-app`; รายชื่อแพลตฟอร์มและความพร้อมของช่องทางมาจาก backend.
+Frontend ไม่อ่าน lake หรือ marketplace โดยตรง และไม่เก็บข้อมูลรับรองของผู้ให้บริการ.
+
+Plugin/Connector ที่มีให้ใช้และทางเลือกต่อ MCP เองแยกจากการติดตั้ง การยืนยันบัญชี และผลตรวจการใช้งาน.
+สถานะที่ไม่มีหลักฐานแสดง “ยังไม่ตรวจ”; ข้อมูลเก่าแสดง “ข้อมูลเก่า/ต้องตรวจใหม่” พร้อมเวลาที่บันทึกและลิงก์หลักฐาน.
+เมื่อ snapshot ใช้ไม่ได้ (503) ส่วน inventory แสดงข้อผิดพลาดที่ไม่เปิดเผยรายละเอียดภายใน ส่วนทะเบียนเดิมยังอ่านได้.
+คำว่า “รองรับช่องทาง” ใช้ `summary.supported_boundaries` และ fallback ไป `connected` เพื่อรองรับ API รุ่นเดิม.
+
 ## Owner modules ที่เรียก cell โดยตรง (server side)
 
 หน้า `/tasks`, `/goals`, `/habits`, `/decisions`, `/revenue` เป็น server component ที่อ่าน cell API ตรง ๆ
