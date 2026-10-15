@@ -10,7 +10,7 @@ Correlation: chat-ai-subscription-value-2026-10-15. Task MCP registration was at
 - [x] T2 (main): implement lib/subscription-value.ts and tests/subscription-value.test.ts. Calculate net saved minutes, allocate payments over covered service dates, keep currencies separate, require complete evidence, invalidate completeness after usage changes, and keep the current month provisional.
 - [x] T3 (main): implement lib/cells/ai-subscriptions.ts and owner action routes using the existing ownerAction guard and cellRequest. Support adding or adopting a subscription, logging usage, recording payment, saving a monthly review and correcting a usage/charge record. Reject invalid/future dates, unknown fields and unsafe IDs; retain idempotency on retries.
 - [x] T4 (UI worker after types): add /ai-subscriptions with Thai forms, monthly selector, report cards, activity/payment history, explicit unknown states and accessible errors. Add visible navigation and a link from finance. Preserve existing visual language.
-- [ ] T5 (main): run complete test suites, typecheck, build, and an end-to-end local journey against the real isolated service where feasible. Run an independent review, fix blocking findings, commit only scoped files and push the feature branches if remote access works. Production deployment is manual and requires its existing release authorization.
+- [x] T5 (main): run complete test suites, typecheck, build, and an end-to-end local journey against the real isolated service where feasible. Run an independent review, fix blocking findings, commit only scoped files and push the feature branches if remote access works. Production deployment is manual and requires its existing release authorization.
 
 ## Calculation contract
 
@@ -32,3 +32,13 @@ Correlation: chat-ai-subscription-value-2026-10-15. Task MCP registration was at
 5. All mutations must use the existing owner/session/origin guards and backend audit/idempotency.
 
 Verification: npm test, npm run typecheck, npm run build in life-dashboard-web; .venv/bin/pytest -q in finance-subscriptions-api. Existing web baseline: 129 passed, 5 skipped (Python service-auth parity dependency unavailable); report skips explicitly.
+
+## Verified delivery
+
+- Web: 174 tests passed, including Python verifier parity; production build passed.
+- API: 58 passed, seven structurally inapplicable generic cases skipped; one upstream Starlette deprecation warning.
+- Real Chromium / Next / FastAPI / disposable PostgreSQL journey passed, including stale-window rejection, edits, retry identity, persisted evidence and mobile layout.
+- Independent review covered 47cf103 and 7e560f6, then fix 6ec5063. Four correctness findings were fixed. Escalated review of a8be31d cleared the remaining calendar-boundary finding and checked UTC rollover across 1,200 months. No blocking findings remain.
+- Draft PRs: https://github.com/bookchaowalit/life-dashboard-web/pull/2 and https://github.com/bookchaowalit/finance-subscriptions-api/pull/1.
+- Production migration, permission refresh and deployment remain unperformed pending the existing production authorization rule.
+- Review rounds: 3; first-pass acceptance: no; escalation: 1; findings: 4 fixed, 0 open. Subtask workers and initial reviews used gpt-6.1-sol; final boundary review used gpt-6-astra. Exact total/task-bookkeeping timing was not recorded.
