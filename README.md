@@ -62,7 +62,20 @@ npm run dev
 
 เปิด `http://127.0.0.1:3600`
 
-## AI Usage
+## ความคุ้มค่า AI subscription
+
+เปิด `/ai-subscriptions` จากเมนู **ความคุ้มค่า AI** หรือจากหน้าการเงิน เพื่อเพิ่ม
+สมาชิกจากผู้ให้บริการใดก็ได้ หรือจัดหมวด subscription เดิมเป็น `ai` แล้วบันทึก
+งานที่ใช้ AI ช่วย ยอดจ่ายจริงพร้อมช่วงบริการ และการทบทวนรายเดือน
+ดู [วิธีใช้และเกณฑ์การประเมิน](docs/ai-subscriptions.md)
+
+หน้าใหม่นี้ใช้ `EMPIRE_SUBSCRIPTIONS_API` และ `EMPIRE_CELL_TOKEN` ของ Subscriptions
+cell เดิม ต้องลง migration `0003_subscription_usage_and_charges.sql` และปรับ
+permissions ของ cell ก่อนเปิดใช้งาน ไม่สร้างฐานข้อมูลสำรองใน browser และไม่
+ยกเลิกหรือต่ออายุบริการแทนเจ้าของ การเก็บผลงานและใบเสร็จรุ่นนี้เป็นการบันทึกเอง
+ไม่อ่านบทสนทนา ไม่ดึงบัญชี AI อัตโนมัติ และไม่นำโควตาหรือราคา token มาสรุปเป็นผลงาน
+
+## AI Usage (โควตา Claude/Codex เดิม)
 
 เปิด metadata API ด้วย `PYTHONPATH=packages/service-auth .venv/bin/python services/ai-usage-api/server.py` จาก repository root
 แล้วเปิด `/ai-usage` ดู Claude/Codex แยกโควตาแต่ละรอบ ค่าสมาชิกรายเดือน และคำเตือนก่อนรีเซ็ต
