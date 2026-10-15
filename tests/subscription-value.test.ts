@@ -74,6 +74,11 @@ describe('AI subscription value from recorded evidence', () => {
     expect(calculateSubscriptionValue(subscription, [], [charge()], midway, monthPeriod('2026-09', '2026-09-15'))).toMatchObject({ usageComplete: true, provisional: true });
     expect(calculateSubscriptionValue(subscription, [], [charge()], midway, period())).toMatchObject({ usageComplete: false, verdict: 'insufficient_data', action: 'collect_data' });
   });
+  it('does not promote confirmation on the final calendar day into a final review the next day', () => {
+    const lastDay = review([], { evidence: JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint([]), confirmed_through: '2026-09-30' }) });
+    expect(calculateSubscriptionValue(subscription, [], [charge()], lastDay, monthPeriod('2026-09', '2026-09-30'))).toMatchObject({ usageComplete: true, provisional: true });
+    expect(calculateSubscriptionValue(subscription, [], [charge()], lastDay, monthPeriod('2026-09', '2026-10-01'))).toMatchObject({ usageComplete: false, verdict: 'insufficient_data' });
+  });
   it('does not infer a refund or remove prepaid costs when the subscription is cancelled', () => {
     const rows = [usage({ used_on: '2026-09-20', baseline_minutes: 100 })];
     const result = calculateSubscriptionValue({ ...subscription, cancelled_on: '2026-09-15', status: 'cancelled' }, rows, [charge({ amount: 30 })], review(rows), period());

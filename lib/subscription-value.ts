@@ -67,7 +67,7 @@ function confirmed(review: SubscriptionReview | null, rows: SubscriptionUsage[],
   if (!review?.usage_complete) return false;
   try {
     const evidence = JSON.parse(review.evidence ?? '');
-    const requiredThrough = period.closed ? period.end : period.today;
+    const requiredThrough = period.closed ? new Date(stamp(period.end) + DAY_MS).toISOString().slice(0, 10) : period.today;
     return evidence.kind === 'ai-subscription-review.v1' && evidence.usage_fingerprint === usageFingerprint(rows)
       && validDate(evidence.confirmed_through) && evidence.confirmed_through >= requiredThrough && evidence.confirmed_through <= period.today;
   } catch { return false; }
