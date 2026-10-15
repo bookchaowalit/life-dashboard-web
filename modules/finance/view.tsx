@@ -89,6 +89,8 @@ export default function FinanceViewComponent({ data }: { data: FinanceView }) {
         ) : <Empty>ไม่มีงบที่ครอบคลุมวันนี้</Empty>)}
       </Section>
 
+      <p className="cells-summary"><a href="/ai-subscriptions">ติดตามการใช้และความคุ้มค่าของสมาชิก AI →</a></p>
+
       <Section title="Subscription" hint="ต่ออายุใน 14 วันขึ้นก่อน" result={subs}>
         {({ active, renewing }) => (active.length ? (
           <>
