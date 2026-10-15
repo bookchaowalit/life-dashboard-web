@@ -5,7 +5,7 @@ const subscription: Subscription = { id: 7, version: 1, name: 'My custom AI', pr
 const period = () => monthPeriod('2026-09', '2026-10-15');
 const usage = (patch: Partial<SubscriptionUsage> = {}): SubscriptionUsage => ({ id: 11, version: 1, subscription_id: 7, used_on: '2026-09-15', title: 'Deliver client report', outcome: 'completed', baseline_minutes: 180, actual_minutes: 30, rework_minutes: 30, ...patch });
 const charge = (patch: Partial<SubscriptionCharge> = {}): SubscriptionCharge => ({ id: 21, subscription_id: 7, paid_on: '2026-09-01', period_start: '2026-09-01', period_end: '2026-09-30', amount: 20, currency: 'USD', evidence: 'receipt-21', ...patch });
-const review = (rows: SubscriptionUsage[], patch: Partial<SubscriptionReview> = {}): SubscriptionReview => ({ id: 31, version: 1, subscription_id: 7, review_date: '2026-09-30', period_start: '2026-09-01', period_end: '2026-09-30', usage_complete: true, hourly_value: 30, value_currency: 'USD', evidence: JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(rows) }), ...patch });
+const review = (rows: SubscriptionUsage[], patch: Partial<SubscriptionReview> = {}): SubscriptionReview => ({ id: 31, version: 1, subscription_id: 7, review_date: '2026-09-30', period_start: '2026-09-01', period_end: '2026-09-30', usage_complete: true, hourly_value: 30, value_currency: 'USD', evidence: JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(rows), confirmed_through: '2026-10-15' }), ...patch });
 
 describe('AI subscription value from recorded evidence', () => {
   it('subtracts work, verification and fixes before valuing the saved time', () => {
@@ -20,10 +20,19 @@ describe('AI subscription value from recorded evidence', () => {
     expect(result.paidInPeriod).toBe(0);
     expect(result.costCoverage).toBe('complete');
   });
+  it('keeps a prepayment visible and editable in the month it was paid, without treating it as that month\'s service cost', () => {
+    const result = calculateSubscriptionValue(subscription, [], [charge({ paid_on: '2026-09-15', period_start: '2026-10-01', period_end: '2026-10-31' })], null, period());
+    expect(result).toMatchObject({ paidInPeriod: 20, allocatedCost: null, costCoverage: 'missing', charges: [{ id: 21 }] });
+  });
   it('does not treat discarded or partial work as a saved baseline', () => {
     const rows = [usage({ outcome: 'discarded', actual_minutes: 20, rework_minutes: 10 })];
     const result = calculateSubscriptionValue(subscription, rows, [charge()], review(rows), period());
     expect(result).toMatchObject({ netMinutes: -30, timeValue: -15, netValue: -35, completedCount: 0, verdict: 'not_worth_it', action: 'review_cancel' });
+  });
+  it('suggests reviewing the plan when work saves time but the recorded price exceeds that value', () => {
+    const rows = [usage({ baseline_minutes: 100 })];
+    const result = calculateSubscriptionValue(subscription, rows, [charge({ amount: 30 })], review(rows), period());
+    expect(result).toMatchObject({ timeValue: 20, netValue: -10, verdict: 'not_worth_it', action: 'review_plan' });
   });
   it('keeps unknown measurements unknown and cannot recommend cancellation from missing evidence', () => {
     const rows = [usage({ baseline_minutes: null })];
@@ -57,8 +66,18 @@ describe('AI subscription value from recorded evidence', () => {
   it('keeps an open month provisional even after the owner confirms the logs', () => {
     const p = monthPeriod('2026-09', '2026-09-20');
     const rows = [usage({ baseline_minutes: 0 })];
-    const result = calculateSubscriptionValue(subscription, rows, [charge()], review(rows), p);
+    const result = calculateSubscriptionValue(subscription, rows, [charge()], review(rows, { evidence: JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(rows), confirmed_through: '2026-09-20' }) }), p);
     expect(result).toMatchObject({ provisional: true, verdict: 'conditional', action: 'collect_data' });
+  });
+  it('requires a fresh confirmation after month end rather than promoting a midmonth statement automatically', () => {
+    const midway = review([], { evidence: JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint([]), confirmed_through: '2026-09-15' }) });
+    expect(calculateSubscriptionValue(subscription, [], [charge()], midway, monthPeriod('2026-09', '2026-09-15'))).toMatchObject({ usageComplete: true, provisional: true });
+    expect(calculateSubscriptionValue(subscription, [], [charge()], midway, period())).toMatchObject({ usageComplete: false, verdict: 'insufficient_data', action: 'collect_data' });
+  });
+  it('does not infer a refund or remove prepaid costs when the subscription is cancelled', () => {
+    const rows = [usage({ used_on: '2026-09-20', baseline_minutes: 100 })];
+    const result = calculateSubscriptionValue({ ...subscription, cancelled_on: '2026-09-15', status: 'cancelled' }, rows, [charge({ amount: 30 })], review(rows), period());
+    expect(result).toMatchObject({ allocatedCost: 30, timeValue: 20, usageCount: 1, verdict: 'not_worth_it' });
   });
   it('ignores other subscriptions, other periods and future usage', () => {
     const rows = [usage(), usage({ id: 12, subscription_id: 99 }), usage({ id: 13, used_on: '2026-08-31' }), usage({ id: 14, used_on: '2026-10-16' })];

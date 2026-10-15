@@ -86,10 +86,11 @@ export async function saveAiSubscriptionEvidence(body: Record<string, unknown>, 
     return { id: row.id, action };
   }
   if (action === 'review') {
-    fields(body, ['idempotency_key', 'subscription_id', 'month', 'hourly_value', 'usage_complete', 'expected_version']);
+    fields(body, ['idempotency_key', 'subscription_id', 'month', 'hourly_value', 'usage_complete', 'expected_version', 'usage_fingerprint']);
     const subscriptionId = positiveId(body.subscription_id); const requestKey = key(body.idempotency_key);
     const hourlyValue = amount(body.hourly_value, true);
     if (typeof body.usage_complete !== 'boolean' || typeof body.month !== 'string') invalid();
+    if (body.usage_complete && (typeof body.usage_fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(body.usage_fingerprint))) invalid();
     let period;
     try { period = monthPeriod(body.month as string, today); } catch { invalid(); }
     const subscription = await getSubscription(subscriptionId);
@@ -110,9 +111,11 @@ export async function saveAiSubscriptionEvidence(body: Record<string, unknown>, 
       period_start: period!.start, period_end: period!.end, usage_complete: body.usage_complete as boolean,
       hourly_value: hourlyValue, value_currency: subscription.currency };
     const selected = calculateSubscriptionValue(subscription, usages, charges, null, period!);
-    draft.evidence = JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(selected.usages) });
+    if (body.usage_complete && body.usage_fingerprint !== usageFingerprint(selected.usages)) throw new CellError('conflict', 'subscriptions');
+    draft.evidence = JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(selected.usages), confirmed_through: today });
     const report = calculateSubscriptionValue(subscription, usages, charges, draft, period!);
     const evidence = JSON.stringify({ kind: 'ai-subscription-review.v1', usage_fingerprint: usageFingerprint(report.usages), request_key: requestKey,
+      confirmed_through: today,
       net_minutes: report.netMinutes, allocated_cost: report.allocatedCost, cost_coverage: report.costCoverage,
       time_value_is_estimate: true });
     const data = { subscription_id: subscriptionId, review_date: period!.end, period_start: period!.start, period_end: period!.end,

@@ -96,14 +96,21 @@ describe('owner subscription evidence writes', () => {
   it('saves a review snapshot bound to the usage versions and never trusts a caller verdict', async () => {
     rows['subscription-usages'] = [{ id: 11, version: 3, subscription_id: 7, used_on: '2026-09-15', title: 'Report', outcome: 'completed', baseline_minutes: 180, actual_minutes: 30, rework_minutes: 30 }];
     rows['subscription-charges'] = [{ id: 21, subscription_id: 7, paid_on: '2026-09-01', period_start: '2026-09-01', period_end: '2026-09-30', amount: 20, currency: 'USD', evidence: 'receipt' }];
-    const body = { action: 'review', subscription_id: 7, month: '2026-09', hourly_value: 30, usage_complete: true, idempotency_key: 'repeatable-request-004' };
+    const body = { action: 'review', subscription_id: 7, month: '2026-09', hourly_value: 30, usage_complete: true, usage_fingerprint: 'bf6d34915b16077fb60964708a5e3ecd1e42d4b29b7fbb2ec521f2f16fc1f4e6', idempotency_key: 'repeatable-request-004' };
     expect((await POST(post({ ...body, verdict: 'worth_it' }))).status).toBe(400);
     expect((await POST(post(body))).status).toBe(200);
     expect(writes[0].body).toMatchObject({ period_start: '2026-09-01', period_end: '2026-09-30', usage_complete: true, hourly_value: 30, value_currency: 'USD', verdict: 'worth_it', time_saved_hours: 2 });
-    expect(JSON.parse(String(writes[0].body.evidence))).toMatchObject({ kind: 'ai-subscription-review.v1', usage_fingerprint: '[[11,3]]' });
+    expect(JSON.parse(String(writes[0].body.evidence))).toMatchObject({ kind: 'ai-subscription-review.v1', usage_fingerprint: 'bf6d34915b16077fb60964708a5e3ecd1e42d4b29b7fbb2ec521f2f16fc1f4e6' });
   });
   it('adopts an existing subscription with optimistic concurrency', async () => {
     expect((await POST(post({ action: 'adopt', subscription_id: 8, expected_version: 1 }))).status).toBe(200);
     expect(writes[0]).toMatchObject({ path: '/v1/subscriptions/8', body: { category: 'ai', expected_version: 1 } });
+  });
+  it('rejects confirming a stale window and requires the observed usage fingerprint for a complete review', async () => {
+    rows['subscription-usages'] = [{ id: 11, version: 2, subscription_id: 7, used_on: '2026-09-15', title: 'Changed in another tab', outcome: 'completed', baseline_minutes: 180, actual_minutes: 90, rework_minutes: 30 }];
+    const body = { action: 'review', subscription_id: 7, month: '2026-09', hourly_value: 30, usage_complete: true, idempotency_key: 'repeatable-request-005' };
+    expect((await POST(post(body))).status).toBe(400);
+    expect((await POST(post({ ...body, usage_fingerprint: '0'.repeat(64) }))).status).toBe(409);
+    expect(writes).toEqual([]);
   });
 });

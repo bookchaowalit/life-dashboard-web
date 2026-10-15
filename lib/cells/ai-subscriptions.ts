@@ -37,7 +37,10 @@ export async function loadAiSubscriptions(env: Env, options: { month?: string; n
       subscriptionRecords<SubscriptionReview>(config, 'subscription-reviews'),
     ]);
     const rows = subscriptions.filter((row) => row.category === 'ai')
-      .filter((row) => (!row.started_on || row.started_on <= period.end) && (!row.cancelled_on || row.cancelled_on >= period.start))
+      .filter((row) => ((!row.started_on || row.started_on <= period.end) && (!row.cancelled_on || row.cancelled_on >= period.start))
+        || usages.some((usage) => usage.subscription_id === row.id && usage.used_on >= period.start && usage.used_on <= period.end)
+        || charges.some((charge) => charge.subscription_id === row.id && ((charge.period_start <= period.end && charge.period_end >= period.start)
+          || (charge.paid_on >= period.start && charge.paid_on <= period.end))))
       .map((subscription) => {
         const review = reviews.filter((row) => row.subscription_id === subscription.id && row.period_start === period.start && row.period_end === period.end)
           .sort((a, b) => b.id - a.id)[0] ?? null;

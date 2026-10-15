@@ -2,8 +2,9 @@
 
 import type { Subscription, SubscriptionCharge, SubscriptionUsage, SubscriptionValueReport } from '@/lib/subscription-value';
 import { Evidence, Field, MutationForm, numberOrNull, optional, text } from './form';
+import type { Payload } from './retry';
 
-type FormReport = Pick<SubscriptionValueReport, 'period' | 'currency' | 'hourlyValue' | 'usageComplete'> & { subscription: Pick<Subscription, 'id' | 'currency'>; reviewVersion: number | null };
+type FormReport = Pick<SubscriptionValueReport, 'period' | 'currency' | 'hourlyValue' | 'usageComplete'> & { subscription: Pick<Subscription, 'id' | 'currency'>; reviewVersion: number | null; usageFingerprint: string };
 
 const intervals = { weekly: 'รายสัปดาห์', monthly: 'รายเดือน', quarterly: 'รายไตรมาส', yearly: 'รายปี', usage: 'ตามการใช้', one_time: 'ครั้งเดียว' };
 
@@ -66,14 +67,19 @@ export function ChargeForm({ report, record }: { report: FormReport; record?: Su
   </MutationForm>;
 }
 
-export function ReviewForm({ report }: { report: FormReport }) {
-  return <MutationForm title="บันทึกการประเมินเดือนนี้" reset={false} payload={(data) => ({
+export function reviewPayload(report: FormReport, data: FormData): Payload {
+  return {
     action: 'review', subscription_id: report.subscription.id, month: report.period.month,
     ...(report.reviewVersion !== null ? { expected_version: report.reviewVersion } : {}),
     hourly_value: numberOrNull(data, 'hourly_value'), usage_complete: data.get('usage_complete') === 'on',
-  })}>
+    usage_fingerprint: report.usageFingerprint,
+  };
+}
+
+export function ReviewForm({ report }: { report: FormReport }) {
+  return <MutationForm title="บันทึกการประเมินเดือนนี้" reset={false} payload={(data) => reviewPayload(report, data)}>
     <Field label={`มูลค่าเวลาโดยประมาณต่อชั่วโมง (${report.currency})`} name="hourly_value" type="number" min="0" step="0.01" defaultValue={report.hourlyValue ?? ''} />
-    <label className="ai-check ai-wide"><input name="usage_complete" type="checkbox" defaultChecked={report.usageComplete} /><span>ยืนยันว่าบันทึกการใช้ทั้งหมดของเดือน {report.period.month} แล้ว รวมถึงกรณีไม่ได้ใช้เลย</span></label>
+    <label className="ai-check ai-wide"><input name="usage_complete" type="checkbox" defaultChecked={report.usageComplete} /><span>ยืนยันว่าบันทึกการใช้{report.period.closed ? 'ทั้งหมดของเดือน' : 'ถึงวันนี้ของเดือน'} {report.period.month} แล้ว รวมถึงกรณีไม่ได้ใช้เลย</span></label>
     <p className="cells-summary ai-wide">มูลค่าเวลาเป็นการประมาณ ไม่ใช่รายรับจริง การเพิ่มหรือแก้ไขบันทึกการใช้ทำให้ต้องยืนยันความครบถ้วนใหม่ เดือนปัจจุบันยังเป็นข้อสรุปเบื้องต้น</p>
   </MutationForm>;
 }

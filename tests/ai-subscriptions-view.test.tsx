@@ -106,3 +106,19 @@ describe('mutation retry identity', () => {
     expect(attempt.prepare({ action: 'adopt', subscription_id: 1, expected_version: 2 })).toEqual({ action: 'adopt', subscription_id: 1, expected_version: 2 });
   });
 });
+
+describe('monthly review evidence binding', () => {
+  it('posts the rendered evidence fingerprint with the existing review version when confirming completeness', async () => {
+    const { reviewPayload } = await import('../modules/ai-subscriptions/forms');
+    const fields = new FormData();
+    fields.set('hourly_value', '300');
+    fields.set('usage_complete', 'on');
+    expect(reviewPayload({
+      subscription: { id: 1, currency: 'THB' }, period, currency: 'THB', hourlyValue: 300,
+      usageComplete: false, reviewVersion: 4, usageFingerprint: 'rendered-evidence-fingerprint',
+    }, fields)).toEqual({
+      action: 'review', subscription_id: 1, month: '2026-09', expected_version: 4,
+      hourly_value: 300, usage_complete: true, usage_fingerprint: 'rendered-evidence-fingerprint',
+    });
+  });
+});

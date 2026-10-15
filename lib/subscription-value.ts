@@ -1,4 +1,5 @@
 /** Provider-neutral value calculations. Unknown evidence stays unknown; no currency conversion. */
+import { createHash } from 'node:crypto';
 export interface Subscription {
   id: number; version?: number; name: string; provider: string; category: string; status: string;
   amount: number; currency: string; billing_interval: string;
@@ -58,14 +59,17 @@ export function monthPeriod(month: string, today: string): ValuePeriod {
 }
 
 export function usageFingerprint(rows: SubscriptionUsage[]): string {
-  return JSON.stringify(rows.map((row) => [row.id, row.version ?? 0]).sort((a, b) => a[0] - b[0]));
+  const versions = JSON.stringify(rows.map((row) => [row.id, row.version ?? 0]).sort((a, b) => a[0] - b[0]));
+  return createHash('sha256').update(versions).digest('hex');
 }
 
-function confirmed(review: SubscriptionReview | null, rows: SubscriptionUsage[]): boolean {
+function confirmed(review: SubscriptionReview | null, rows: SubscriptionUsage[], period: ValuePeriod): boolean {
   if (!review?.usage_complete) return false;
   try {
     const evidence = JSON.parse(review.evidence ?? '');
-    return evidence.kind === 'ai-subscription-review.v1' && evidence.usage_fingerprint === usageFingerprint(rows);
+    const requiredThrough = period.closed ? period.end : period.today;
+    return evidence.kind === 'ai-subscription-review.v1' && evidence.usage_fingerprint === usageFingerprint(rows)
+      && validDate(evidence.confirmed_through) && evidence.confirmed_through >= requiredThrough && evidence.confirmed_through <= period.today;
   } catch { return false; }
 }
 
@@ -74,13 +78,16 @@ export function calculateSubscriptionValue(
   savedReview: SubscriptionReview | null, period: ValuePeriod,
 ): SubscriptionValueReport {
   const currency = subscription.currency;
-  const start = validDate(subscription.started_on) && subscription.started_on > period.start ? subscription.started_on : period.start;
-  const end = validDate(subscription.cancelled_on) && subscription.cancelled_on < period.end ? subscription.cancelled_on : period.end;
+  const start = period.start;
+  const end = period.end;
+  // Lifecycle dates set the required coverage, but never imply a refund of a recorded invoice.
+  const coverageStart = validDate(subscription.started_on) && subscription.started_on > start && subscription.started_on <= end ? subscription.started_on : start;
+  const coverageEnd = validDate(subscription.cancelled_on) && subscription.cancelled_on >= coverageStart && subscription.cancelled_on < end ? subscription.cancelled_on : end;
   const inPeriod = (day: string) => validDate(day) && day >= start && day <= end && day <= period.today;
   const usages = allUsages.filter((row) => row.subscription_id === subscription.id && inPeriod(row.used_on));
   const review = savedReview?.subscription_id === subscription.id && savedReview.period_start === period.start
     && savedReview.period_end === period.end ? savedReview : null;
-  const usageComplete = confirmed(review, usages);
+  const usageComplete = confirmed(review, usages, period);
   let measuredNet = 0; let measuredSpent = 0; let unmeasuredCount = 0;
   for (const row of usages) {
     if (!nonnegative(row.actual_minutes) || !nonnegative(row.rework_minutes)
@@ -99,30 +106,38 @@ export function calculateSubscriptionValue(
   const charges = allCharges.filter((row) => row.subscription_id === subscription.id
     && validDate(row.period_start) && validDate(row.period_end) && row.period_start <= row.period_end
     && row.period_start <= end && row.period_end >= start);
+  const cashCharges = allCharges.filter((row) => row.subscription_id === subscription.id && validDate(row.paid_on)
+    && row.paid_on >= period.start && row.paid_on <= period.end && row.paid_on <= period.today);
+  const serviceChargeIds = new Set(charges.map((row) => row.id));
+  const cashChargeIds = new Set(cashCharges.map((row) => row.id));
+  const historyCharges = allCharges.filter((row) => row.subscription_id === subscription.id
+    && (serviceChargeIds.has(row.id) || cashChargeIds.has(row.id)));
   const usable = charges.filter((row) => row.currency === currency && nonnegative(row.amount)
     && validDate(row.paid_on) && row.paid_on <= period.today && Boolean(row.evidence?.trim()));
   const invalidCharge = usable.length !== charges.length;
   const mismatch = charges.some((row) => row.currency !== currency);
   const intervals = usable.map((row) => ({ start: row.period_start > start ? row.period_start : start,
     end: row.period_end < end ? row.period_end : end })).sort((a, b) => a.start.localeCompare(b.start));
-  let through = stamp(start) - DAY_MS; let overlap = false; let gap = false;
+  let through = stamp(coverageStart) - DAY_MS; let previousEnd = -Infinity; let overlap = false; let gap = false;
   for (const interval of intervals) {
     const from = stamp(interval.start); const until = stamp(interval.end);
-    if (from <= through) overlap = true;
-    if (from > through + DAY_MS) gap = true;
-    through = Math.max(through, until);
+    if (from <= previousEnd) overlap = true;
+    previousEnd = Math.max(previousEnd, until);
+    if (until < stamp(coverageStart) || from > stamp(coverageEnd)) continue;
+    if (Math.max(from, stamp(coverageStart)) > through + DAY_MS) gap = true;
+    through = Math.max(through, Math.min(until, stamp(coverageEnd)));
   }
   const costCoverage: SubscriptionValueReport['costCoverage'] = mismatch ? 'currency_mismatch'
     : !usable.length ? 'missing' : overlap ? 'overlap'
-      : invalidCharge || gap || through < stamp(end) || start > end ? 'partial' : 'complete';
+      : invalidCharge || gap || through < stamp(coverageEnd) ? 'partial' : 'complete';
   const allocatedCost = usable.length && !mismatch ? cents(usable.reduce((sum, row) => {
     const covered = (stamp(row.period_end < end ? row.period_end : end) - stamp(row.period_start > start ? row.period_start : start)) / DAY_MS + 1;
     const days = (stamp(row.period_end) - stamp(row.period_start)) / DAY_MS + 1;
     return sum + row.amount * covered / days;
   }, 0)) : null;
-  const paidInPeriod = mismatch || !allCharges.some((row) => row.subscription_id === subscription.id) ? null : cents(allCharges.filter((row) => row.subscription_id === subscription.id
-    && row.currency === currency && validDate(row.paid_on) && row.paid_on >= period.start && row.paid_on <= period.end
-    && row.paid_on <= period.today && nonnegative(row.amount)).reduce((sum, row) => sum + row.amount, 0));
+  const paidInPeriod = mismatch || cashCharges.some((row) => row.currency !== currency || !nonnegative(row.amount))
+    || !allCharges.some((row) => row.subscription_id === subscription.id) ? null
+      : cents(cashCharges.reduce((sum, row) => sum + row.amount, 0));
   const multiplier: Record<string, number> = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
   const estimatedMonthlyCost = nonnegative(subscription.amount) && multiplier[subscription.billing_interval]
     ? cents(subscription.amount * multiplier[subscription.billing_interval]) : null;
@@ -148,11 +163,11 @@ export function calculateSubscriptionValue(
       verdict = 'worth_it'; action = 'keep';
       reasons.push('มูลค่าเวลาที่ประหยัดตามค่าประเมินครอบคลุมต้นทุนที่บันทึกแล้ว');
     } else {
-      verdict = 'not_worth_it'; action = 'review_cancel';
+      verdict = 'not_worth_it'; action = timeValue !== null && timeValue > 0 ? 'review_plan' : 'review_cancel';
       reasons.push('มูลค่าเวลาตามค่าประเมินยังไม่ครอบคลุมต้นทุน ตรวจผลงานและคุณค่าด้านอื่นก่อนเปลี่ยนแพ็กเกจ');
     }
   }
-  return { subscription, period, usages, charges, review, currency, usageCount: usages.length,
+  return { subscription, period, usages, charges: historyCharges, review, currency, usageCount: usages.length,
     completedCount: usages.filter((row) => row.outcome === 'completed').length, unmeasuredCount,
     netMinutes, spentMinutes, hourlyValue, estimatedMonthlyCost, allocatedCost, paidInPeriod, costCoverage,
     timeValue, netValue, roiPercent, usageComplete, verdict, action, reasons, provisional: !period.closed };

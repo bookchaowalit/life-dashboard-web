@@ -1,16 +1,16 @@
-import type { SubscriptionValueReport } from '@/lib/subscription-value';
+import { usageFingerprint, type SubscriptionValueReport } from '@/lib/subscription-value';
 import { ChargeForm, ReviewForm, UsageForm } from './forms';
 
 const unknown = 'ยังไม่มีข้อมูล';
 const number = (value: number | null, unit: string) => value === null ? unknown : `${value.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ${unit}`;
 const verdicts = { worth_it: 'คุ้มค่าตามข้อมูล', conditional: 'รอทบทวนเมื่อสิ้นงวด', not_worth_it: 'ยังไม่คุ้มค่า', insufficient_data: 'ข้อมูลยังไม่พอสรุป' };
 const actions = { keep: 'ใช้แผนเดิมต่อได้ตามข้อมูล', review_plan: 'ทบทวนแผนและวิธีใช้', review_cancel: 'พิจารณาความจำเป็นก่อนรอบต่อไป', collect_data: 'เก็บข้อมูลเพิ่มก่อนตัดสินใจ' };
-const coverage = { complete: 'ครอบคลุมเดือนครบ', partial: 'ครอบคลุมเพียงบางวัน', missing: 'ยังไม่มีหลักฐานต้นทุน', currency_mismatch: 'หลักฐานมีสกุลเงินไม่ตรงกัน', overlap: 'ช่วงการจ่ายซ้อนกัน ต้องตรวจสอบ' };
+const coverage = { complete: 'ครอบคลุมช่วงที่ต้องประเมิน', partial: 'ครอบคลุมเพียงบางวัน', missing: 'ยังไม่มีหลักฐานต้นทุน', currency_mismatch: 'หลักฐานมีสกุลเงินไม่ตรงกัน', overlap: 'ช่วงการจ่ายซ้อนกัน ต้องตรวจสอบ' };
 const outcomes = { completed: 'เสร็จและใช้ได้', partial: 'ได้บางส่วน', discarded: 'ไม่ได้ใช้ผลงาน' };
 
 export default function ReportCard({ report }: { report: SubscriptionValueReport }) {
   const s = report.subscription;
-  const formReport = { subscription: { id: s.id, currency: s.currency }, period: report.period, currency: report.currency, hourlyValue: report.hourlyValue, usageComplete: report.usageComplete, reviewVersion: report.review ? report.review.version ?? 1 : null };
+  const formReport = { subscription: { id: s.id, currency: s.currency }, period: report.period, currency: report.currency, hourlyValue: report.hourlyValue, usageComplete: report.usageComplete, reviewVersion: report.review ? report.review.version ?? 1 : null, usageFingerprint: usageFingerprint(report.usages) };
   return <article className="cells-card ai-report" aria-labelledby={`subscription-${s.id}`}>
     <header><h2 id={`subscription-${s.id}`}>{s.name}</h2><p className="cells-meta">{s.provider} · {s.currency} · ต่ออายุถัดไป {s.next_billing_date ?? unknown}</p></header>
     <p><strong className="cells-pill">{report.provisional ? 'ข้อสรุปเบื้องต้น' : 'ข้อสรุปสิ้นเดือน'} · {verdicts[report.verdict]}</strong></p>
