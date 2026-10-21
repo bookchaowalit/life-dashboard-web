@@ -16,6 +16,7 @@ export const MODULES: ModuleLink[] = [
   { id: 'decisions', label: 'การตัดสินใจ', description: 'การตัดสินใจที่ยังเปิดอยู่และประวัติ (อ่านอย่างเดียว)', href: '/decisions', migrated: true },
   { id: 'revenue', label: 'รายได้', description: 'ยอดรายได้ต่อสกุลเงิน รายการล่าสุด และใบแจ้งหนี้ที่ค้าง (อ่านอย่างเดียว)', href: '/revenue', migrated: true },
   { id: 'finance', label: 'การเงิน', description: 'บัญชี รายการ งบ subscription หนี้ การลงทุน และภาษี (อ่านอย่างเดียว)', href: '/finance', migrated: true },
+  { id: 'ai-subscriptions', label: 'ความคุ้มค่า AI', description: 'ค่าสมาชิก การใช้ ผลงาน และความคุ้มค่ารายเดือน แยกตามผู้ให้บริการและสกุลเงิน', href: '/ai-subscriptions', migrated: true },
   { id: 'production', label: 'งานผลิต', description: 'คลังไฟล์ ส่งต่อข้ามเครื่องมือ ตรวจงาน ส่งมอบ', href: '/production', migrated: true, hidden: true },
   { id: 'knowledge', label: 'คลังความรู้', description: 'ค้นเอกสารและความสัมพันธ์', href: '/knowledge', migrated: true },
   { id: 'cloud', label: 'คลาวด์', description: 'ผู้ให้บริการ ค่าใช้จ่าย และทรัพยากร (อ่านอย่างเดียว)', href: '/cloud', migrated: true, hidden: true },
