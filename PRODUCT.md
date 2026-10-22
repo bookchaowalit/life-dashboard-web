@@ -35,8 +35,8 @@ the client bundle or `NEXT_PUBLIC_*`.
 - Backends: the Tasks API (`platform-empire`), the goals, habits and decisions cells, the CRM
   ledger (income instance) and the other cells named in the README.
 - Errors go to Sentry (org `personal-yu0`, project `life-dashboard-web`) when
-  `NEXT_PUBLIC_SENTRY_DSN` is set: errors only, no tracing, and no request, response, user,
-  breadcrumb or local-variable data (`lib/sentry.ts`).
+  `NEXT_PUBLIC_SENTRY_DSN` is set: errors only, no tracing; each event is rebuilt from an allowlist
+  (error type, redacted message, stack locations, level, release, runtime) in `lib/sentry.ts`.
 
 ## Capabilities and Constraints
 

@@ -19,35 +19,95 @@ describe('sentryOptions', () => {
   });
 });
 
+// Shaped like what Sentry.captureRequestError sends for a failing route handler.
+function requestErrorEvent() {
+  return {
+    event_id: 'abc',
+    timestamp: 1,
+    level: 'error',
+    platform: 'node',
+    environment: 'production',
+    release: 'r1',
+    message: 'failed for x@example.com',
+    transaction: 'GET /api/finance-transactions/v1/transactions/42',
+    tags: { url: 'https://life.example/api/finance-transactions/v1/transactions/42?q=rent' },
+    request: {
+      url: 'https://life.example/api/finance-transactions/v1/transactions/42?q=rent',
+      headers: { cookie: 'session=a', authorization: 'Bearer t' },
+      data: '{"amount": 1200}',
+    },
+    user: { ip_address: '1.2.3.4', email: 'x@example.com' },
+    breadcrumbs: [{ message: 'clicked' }],
+    extra: { body: '{"amount": 1200}' },
+    threads: { values: [{ id: 1 }] },
+    contexts: {
+      nextjs: { route_type: 'route', router_path: '/api/[service]/[...path]' },
+      response: { body: '{"diary": "private"}' },
+      trace: { trace_id: 't' },
+      runtime: { name: 'node', version: 'v22' },
+      os: { name: 'Linux' },
+    },
+    exception: {
+      values: [
+        {
+          type: 'Error',
+          value:
+            'upstream 500 from https://cell.example/v1/diary/entries/7?token=abc for owner@example.com',
+          mechanism: { type: 'auto.function.nextjs.on_request_error', handled: false },
+          stacktrace: {
+            frames: [
+              {
+                function: 'GET',
+                filename: 'https://life.example/_next/static/chunks/app.js?dpl=dpl_1',
+                abs_path: 'https://life.example/_next/static/chunks/app.js?dpl=dpl_1#x',
+                lineno: 3,
+                colno: 9,
+                in_app: true,
+                vars: { token: 'p' },
+                context_line: 'const secret = "s";',
+                pre_context: ['a'],
+                post_context: ['b'],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
 describe('scrubEvent', () => {
-  it('drops request and response data, user, breadcrumbs and extra', () => {
-    const event = scrubEvent({
-      message: 'boom',
-      request: {
-        url: 'https://life.example/api/finance-transactions/v1/transactions?q=rent',
-        headers: { cookie: 'session=a', authorization: 'Bearer t' },
-      },
-      user: { ip_address: '1.2.3.4', email: 'x@example.com' },
-      breadcrumbs: [{ message: 'clicked' }],
-      extra: { body: '{"amount": 1200}' },
-      contexts: { response: { body: '{"diary": "private"}' }, runtime: { name: 'node' } },
-    });
-    expect(event.message).toBe('boom');
-    expect(event.request).toBe(undefined);
-    expect(event.user).toBe(undefined);
-    expect(event.breadcrumbs).toBe(undefined);
-    expect(event.extra).toBe(undefined);
-    expect(event.contexts).toEqual({ runtime: { name: 'node' } });
+  it('keeps only an allowlist: the error, its stack, level, release and runtime', () => {
+    const event = scrubEvent(requestErrorEvent()) as Record<string, unknown>;
+    expect(Object.keys(event).sort()).toEqual(
+      ['contexts', 'environment', 'event_id', 'exception', 'level', 'message', 'platform', 'release', 'timestamp'],
+    );
+    expect(event.contexts).toEqual({ runtime: { name: 'node', version: 'v22' }, os: { name: 'Linux' } });
   });
 
-  it('removes local variables from stack frames', () => {
-    const event = scrubEvent({
-      exception: {
-        values: [{ type: 'Error', stacktrace: { frames: [{ function: 'f', vars: { token: 'p' } }] } }],
-      },
+  it('redacts URLs to their origin and drops email addresses in messages', () => {
+    const event = scrubEvent(requestErrorEvent());
+    expect(event.message).toBe('failed for [email]');
+    expect(event.exception?.values?.[0]?.value).toBe(
+      'upstream 500 from https://cell.example for [email]',
+    );
+  });
+
+  it('keeps frame locations without locals, source lines or query strings', () => {
+    const frame = scrubEvent(requestErrorEvent()).exception?.values?.[0]?.stacktrace?.frames?.[0];
+    expect(frame).toEqual({
+      function: 'GET',
+      filename: 'https://life.example/_next/static/chunks/app.js',
+      abs_path: 'https://life.example/_next/static/chunks/app.js',
+      lineno: 3,
+      colno: 9,
+      in_app: true,
     });
-    const frame = event.exception?.values?.[0]?.stacktrace?.frames?.[0];
-    expect(frame?.function).toBe('f');
-    expect(frame?.vars).toBe(undefined);
+  });
+
+  it('keeps the exception type and mechanism', () => {
+    const value = scrubEvent(requestErrorEvent()).exception?.values?.[0];
+    expect(value?.type).toBe('Error');
+    expect(value?.mechanism).toEqual({ type: 'auto.function.nextjs.on_request_error', handled: false });
   });
 });
