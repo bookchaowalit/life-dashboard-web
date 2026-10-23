@@ -1,9 +1,11 @@
 import type { TasksView } from '@/lib/cells/loaders';
 import type { Task } from '@/lib/cells/tasks';
-import ActionButton from '@/modules/cells/action-button';
+import ActionButton, { type ActionTracking } from '@/modules/cells/action-button';
 
 const STATUS: Record<string, string> = { todo: 'ต้องทำ', in_progress: 'กำลังทำ', blocked: 'ติดขัด', done: 'เสร็จแล้ว', cancelled: 'ยกเลิก' };
 const ENDPOINT = '/api/owner/tasks/status';
+// Counted after a successful change (docs/measurement/EVENTS.md): the new status only, never the title or number.
+const tracking = (status: 'in_progress' | 'done'): ActionTracking => ({ event: 'task_status_changed', props: { status }, action: 'task_status' });
 
 function TaskRow({ task, today }: { task: Task; today: string }) {
   const overdue = task.due_date !== null && task.due_date < today && task.status !== 'done';
@@ -20,8 +22,8 @@ function TaskRow({ task, today }: { task: Task; today: string }) {
       </div>
       {task.status !== 'done' && task.status !== 'cancelled' && (
         <div className="cells-row-actions">
-          {task.status !== 'in_progress' && <ActionButton endpoint={ENDPOINT} payload={{ number: task.number, status: 'in_progress' }} label="เริ่มทำ" />}
-          <ActionButton endpoint={ENDPOINT} payload={{ number: task.number, status: 'done' }} label="เสร็จแล้ว" className="primary" />
+          {task.status !== 'in_progress' && <ActionButton endpoint={ENDPOINT} payload={{ number: task.number, status: 'in_progress' }} label="เริ่มทำ" tracking={tracking('in_progress')} />}
+          <ActionButton endpoint={ENDPOINT} payload={{ number: task.number, status: 'done' }} label="เสร็จแล้ว" className="primary" tracking={tracking('done')} />
         </div>
       )}
     </li>

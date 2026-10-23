@@ -1,0 +1,77 @@
+{
+  "$comment": "Life Dashboard pilot dashboard (PostHog EU). Create each insight as SQL (HogQL) in PostHog after sign-up; names and KPI IDs follow docs/measurement/KPI-PLAN.md. Days are Asia/Bangkok calendar days; weeks start Monday. A week is measurable only when it is complete and has at least one event (with one owner, zero events cannot be told apart from 'no consent on this device' or 'analytics off'); otherwise the value is NULL = not measurable.",
+  "dashboard": "Life Dashboard pilot",
+  "product": "life-dashboard",
+  "insights": [
+    {
+      "name": "First-event check (last 24 h)",
+      "kpi": null,
+      "events": ["$pageview", "habit_logged", "task_status_changed", "owner_write_failed"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT event, count() AS events, max(timestamp) AS last_seen FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 1 DAY GROUP BY event ORDER BY events DESC"
+      }
+    },
+    {
+      "name": "KPI-O-01 Owner active days per week",
+      "kpi": "KPI-O-01",
+      "min_volume": "complete week with >= 1 event, else not measurable",
+      "events": ["habit_logged", "task_status_changed"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, count() AS events, uniqIf(toDate(toTimeZone(timestamp, 'Asia/Bangkok')), event IN ('habit_logged', 'task_status_changed')) AS active_days, if(events >= 1 AND week < toStartOfWeek(toTimeZone(now(), 'Asia/Bangkok'), 1), active_days, NULL) AS active_days_measured FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    },
+    {
+      "name": "KPI-L-01 Daily review days per week (/tasks opened)",
+      "kpi": "KPI-L-01",
+      "min_volume": "complete week with >= 1 event, else not measurable",
+      "events": ["$pageview"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, count() AS events, uniqIf(toDate(toTimeZone(timestamp, 'Asia/Bangkok')), event = '$pageview' AND properties.$pathname = '/tasks') AS review_days, if(events >= 1 AND week < toStartOfWeek(toTimeZone(now(), 'Asia/Bangkok'), 1), review_days, NULL) AS review_days_measured FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    },
+    {
+      "name": "KPI-L-02 Habit logging days per week",
+      "kpi": "KPI-L-02",
+      "min_volume": "complete week with >= 1 event, else not measurable",
+      "events": ["habit_logged"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, count() AS events, uniqIf(toDate(toTimeZone(timestamp, 'Asia/Bangkok')), event = 'habit_logged' AND properties.change = 'done') AS habit_days, if(events >= 1 AND week < toStartOfWeek(toTimeZone(now(), 'Asia/Bangkok'), 1), habit_days, NULL) AS habit_days_measured FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    },
+    {
+      "name": "KPI-L-03 Task status updates per week",
+      "kpi": "KPI-L-03",
+      "min_volume": "complete week with >= 1 event, else not measurable",
+      "events": ["task_status_changed"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, count() AS events, countIf(event = 'task_status_changed') AS status_updates, countIf(event = 'task_status_changed' AND properties.status = 'done') AS completed, if(events >= 1 AND week < toStartOfWeek(toTimeZone(now(), 'Asia/Bangkok'), 1), status_updates, NULL) AS status_updates_measured FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    },
+    {
+      "name": "KPI-L-04 Module coverage per week",
+      "kpi": "KPI-L-04",
+      "min_volume": "complete week with >= 1 event, else not measurable",
+      "events": ["$pageview"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, count() AS events, uniqIf(arrayElement(splitByChar('/', toString(properties.$pathname)), 2), event = '$pageview' AND arrayElement(splitByChar('/', toString(properties.$pathname)), 2) IN ('tasks', 'goals', 'habits', 'decisions', 'revenue', 'finance', 'knowledge', 'accounts', 'integrations', 'saas')) AS modules_opened, if(events >= 1 AND week < toStartOfWeek(toTimeZone(now(), 'Asia/Bangkok'), 1), modules_opened, NULL) AS modules_opened_measured FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    },
+    {
+      "name": "KPI-G-01 Owner write failure rate",
+      "kpi": "KPI-G-01",
+      "min_volume": "10 writes per week, else not measurable",
+      "alert": "> 10% over 7 days with >= 10 writes",
+      "events": ["owner_write_failed", "habit_logged", "task_status_changed"],
+      "query": {
+        "kind": "HogQLQuery",
+        "query": "SELECT toStartOfWeek(toTimeZone(timestamp, 'Asia/Bangkok'), 1) AS week, countIf(event IN ('habit_logged', 'task_status_changed', 'owner_write_failed')) AS writes, countIf(event = 'owner_write_failed') AS failures, if(writes >= 10, round(100 * failures / writes, 1), NULL) AS failure_rate_pct FROM events WHERE properties.product = 'life-dashboard' AND timestamp >= now() - INTERVAL 12 WEEK GROUP BY week ORDER BY week"
+      }
+    }
+  ]
+}

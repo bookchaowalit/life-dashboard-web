@@ -29,6 +29,7 @@ export default function HabitsViewComponent({ data }: { data: HabitsView }) {
               <ActionButton
                 endpoint={ENDPOINT} payload={{ habit_id: habit.id, completed: !doneToday }}
                 label={doneToday ? 'ยกเลิกวันนี้' : 'ทำแล้ววันนี้'} className={doneToday ? '' : 'primary'}
+                tracking={{ event: 'habit_logged', props: { change: doneToday ? 'undone' : 'done' }, action: 'habit_log' }}
               />
             </div>
           </li>
