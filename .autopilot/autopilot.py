@@ -852,6 +852,10 @@ def finish_passed(task: Task, record: dict, verdict: dict, results: list[GateRes
     return record
 
 
+PROTECTED = re.compile(r"protected branch hook declined|GH006|required status check|Changes must be made through a pull request", re.I)
+_PUSH_BLOCKED: list[str] = []  # set when branch protection refused the bot's push to the base branch
+
+
 def merge_branch(branch: str, message: str) -> str:
     git("checkout", "--quiet", BASE)
     if writes_allowed():
@@ -882,6 +886,8 @@ def merge_branch(branch: str, message: str) -> str:
         code, out = run(["git", "push", "--quiet", "origin", f"{sha}:refs/heads/{BASE}"])
         if code != 0:
             log(f"push failed: {tail(out, 10)}")
+            if PROTECTED.search(out):
+                _PUSH_BLOCKED.append(tail(out, 6))
             git("reset", "--quiet", "--hard", "HEAD~1")
             return ""
         run(["git", "push", "--quiet", "origin", "--delete", branch])
@@ -971,7 +977,20 @@ def merge_approved_prs(budget: Budget) -> None:
         # the issue number comes from the branch the loop named (autopilot/<N>-…), not from the editable body
         issue = re.match(re.escape(CONFIG["branch_prefix"]) + r"(\d+)-", pr["headRefName"])
         msg = f"Merge {pr['headRefName']}: {pr['title']}\n\nApproved via label on {pr['url']}" + (f"\nCloses #{issue.group(1)}" if issue else "") + TRAILER
+        _PUSH_BLOCKED.clear()
         sha = merge_branch(pr["headRefName"], msg)
+        if not sha and _PUSH_BLOCKED:
+            # Branch protection on the base branch refuses GITHUB_TOKEN: the owner merges this one.
+            budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "needs_owner_merge", "pr": pr["url"]})
+            if writes_allowed():
+                gh("pr", "comment", str(pr["number"]), "--repo", REPO, "--body-file", "-", check=False,
+                   stdin=f"อนุมัติแล้ว แต่ branch protection ของ `{BASE}` ไม่ให้ bot push (required checks) จึงต้องให้เจ้าของ merge ในเครื่อง:\n\n"
+                         f"```bash\ngit fetch origin {pr['headRefName']} && git checkout {BASE} && git pull --ff-only\n"
+                         f"git merge --no-ff origin/{pr['headRefName']}  # head ต้องเป็น {pr['headRefOid'][:7]}\ngit push origin {BASE}\n```\n\n"
+                         f"merge = deploy production (Vercel) · ตรวจโควตา Vercel ก่อน\n\n```\n{_PUSH_BLOCKED[0]}\n```")
+                gh("pr", "edit", str(pr["number"]), "--repo", REPO, "--remove-label", LABELS["approved"], check=False)  # comment once, not every run
+            telegram("needs_human", f"🔒 อนุมัติ {esc(pr['title'])} แล้ว แต่ branch protection ไม่ให้ bot merge → เจ้าของ merge เอง\n{pr['url']}")
+            continue
         rec = {"issue": int(issue.group(1)) if issue else None, "title": pr["title"], "outcome": "merged" if sha else "merge_failed", "pr": pr["url"]}
         if sha and free is not None:
             free -= 1
@@ -1086,7 +1105,7 @@ def main() -> int:
         budget = load_budget()
         fails = 0
         for o in budget.recent_outcomes:
-            if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota"):
+            if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota", "needs_owner_merge"):
                 continue
             if o not in ("blocked", "merge_failed"):
                 break
