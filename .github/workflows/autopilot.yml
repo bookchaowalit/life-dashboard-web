@@ -1,0 +1,117 @@
+name: autopilot
+
+# Unattended AI delivery loop. See .autopilot/README.md.
+# Public repository → GitHub-hosted runner (CI hosting policy).
+# Scheduled runs only fire when the repository variable AUTOPILOT_ENABLED is "true".
+# Runs at 01:40 and 04:40 Asia/Bangkok: after the productivity-tracking-web pilot (:00) and
+# portfolio-site-web (:20), so the three loops never start in the same minute.
+# A merge to main deploys production (Vercel Git), so this copy never merges on its own:
+# every passed task opens a PR that waits for the autopilot:approved label, and a merge
+# also waits until the shared Vercel quota has more than 20 deploys left.
+
+on:
+  schedule:
+    - cron: "40 18 * * *"
+    - cron: "40 21 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "real | dry-run"
+        default: "dry-run"
+        type: choice
+        options: [dry-run, real]
+      max_tasks:
+        description: "Max tasks this run"
+        default: "1"
+
+concurrency:
+  group: autopilot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  run:
+    if: github.event_name == 'workflow_dispatch' || vars.AUTOPILOT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Secrets are set only on the steps that need them (not on npm ci / installs).
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # No token in .git/config: repo code run by the gates must not be able to push.
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install agent CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.302
+
+      - name: Install Playwright for the visual gate
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.63.0
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
+
+      - name: Count free Vercel deployments (shared team quota)
+        # Only this step sees the Vercel token; the agent step gets just the number.
+        # No token or an API error leaves the count empty and approved PRs wait.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV" || true
+          import json, os, time, urllib.request
+          token, team = os.environ.get("VERCEL_TOKEN"), os.environ.get("VERCEL_TEAM_ID")
+          if token and team:
+              since, until, used = int((time.time() - 86400) * 1000), None, 0
+              for _ in range(5):
+                  url = f"https://api.vercel.com/v6/deployments?teamId={team}&since={since}&limit=100" + (f"&until={until}" if until else "")
+                  page = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}), timeout=30))
+                  used += len(page.get("deployments", []))
+                  until = (page.get("pagination") or {}).get("next")
+                  if not until or len(page.get("deployments", [])) < 100:
+                      break
+              print(f"VERCEL_FREE_DEPLOYS={100 - used}")
+          PY
+          grep -q VERCEL_FREE_DEPLOYS "$GITHUB_ENV" && echo "counted" || echo "quota unknown: approved PRs will wait"
+
+      - name: Git identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # git push/fetch get the token from gh (GH_TOKEN), which the loop strips from the
+        # environment of the maker, the reviewers and every npm command.
+        run: |
+          gh auth setup-git
+          git config user.name "autopilot[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run autopilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_MAX_TASKS: ${{ inputs.max_tasks }}
+        run: |
+          args=()
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$INPUT_MODE" = "dry-run" ] && args+=(--dry-run)
+            [[ "$INPUT_MAX_TASKS" =~ ^[1-3]$ ]] || { echo "max_tasks must be 1-3"; exit 1; }
+            args+=(--max-tasks "$INPUT_MAX_TASKS")
+          fi
+          exec python3 .autopilot/autopilot.py "${args[@]}"

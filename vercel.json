@@ -10,5 +10,10 @@
   },
   "regions": [
     "sin1"
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "autopilot/*": false
+    }
+  }
 }

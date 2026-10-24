@@ -1,0 +1,148 @@
+{
+  "schema_version": "autopilot.v1",
+  "repo": "bookchaowalit/life-dashboard-web",
+  "default_branch": "main",
+  "branch_prefix": "autopilot/",
+  "backlog": {
+    "source": "github-issues",
+    "label": "autopilot",
+    "status_labels": {
+      "todo": "autopilot:todo",
+      "in_progress": "autopilot:in-progress",
+      "blocked": "autopilot:blocked",
+      "needs_human": "autopilot:needs-human",
+      "proposed": "autopilot:proposed",
+      "approved": "autopilot:approved"
+    },
+    "priority_labels": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "risk_labels": {
+      "low": "risk:low",
+      "medium": "risk:medium",
+      "high": "risk:high"
+    },
+    "ledger_issue_title": "Autopilot ledger",
+    "trusted_authors": [
+      "bookchaowalit",
+      "app/github-actions"
+    ],
+    "ledger_author": "github-actions[bot]",
+    "pr_authors": [
+      "app/github-actions"
+    ]
+  },
+  "limits": {
+    "max_tasks_per_run": 3,
+    "max_attempts_per_task": 3,
+    "max_run_minutes": 50,
+    "max_task_minutes": 25,
+    "maker_max_turns": 60,
+    "reviewer_max_turns": 25,
+    "visual_max_turns": 20,
+    "max_claude_calls_per_day": 24,
+    "max_tasks_per_day": 6,
+    "max_est_usd_per_task": 6,
+    "max_est_usd_per_day": 30,
+    "max_changed_lines_auto_merge": 400,
+    "consecutive_failures_to_pause": 3
+  },
+  "gates": {
+    "commands": [
+      {
+        "name": "test",
+        "run": "npm test"
+      },
+      {
+        "name": "typecheck",
+        "run": "npm run typecheck"
+      },
+      {
+        "name": "build",
+        "run": "npm run build"
+      }
+    ],
+    "review": {
+      "enabled": true,
+      "block_on": [
+        "P0",
+        "P1"
+      ]
+    },
+    "visual": {
+      "enabled": true,
+      "trigger_paths": [
+        "app/",
+        "components/",
+        "modules/"
+      ],
+      "port": 3100,
+      "pages": [
+        "/login"
+      ],
+      "widths": "375,768,1440",
+      "block_on_new": [
+        "blocker",
+        "major"
+      ],
+      "ai_visual_review": true,
+      "skills_repo": "bookchaowalit/platform-agent-skills",
+      "skills_ref": "7949eca0d58108d425a33e39abdc8b62dd2cd75f"
+    }
+  },
+  "merge": {
+    "mode": "pr-approval",
+    "min_free_vercel_deploys": 20,
+    "auto_merge_risk": [],
+    "protected_paths": [
+      "package.json",
+      "package-lock.json",
+      ".github/",
+      ".autopilot/",
+      "next.config.ts",
+      "lib/auth",
+      "lib/page-auth.ts",
+      "lib/request-guard.ts",
+      "app/api/",
+      "app/login/",
+      "instrumentation.ts",
+      "instrumentation-client.ts",
+      "lib/sentry.ts",
+      "vercel.json",
+      "deployment/",
+      "LICENSE",
+      ".env"
+    ],
+    "approvers": [
+      "bookchaowalit"
+    ]
+  },
+  "deploy": {
+    "auto": true,
+    "note": "Merging to main deploys production through Vercel Git (project owner-web) and uses the team's shared 100 deploys/day. Every passed task opens a PR and waits for the autopilot:approved label; a merge waits until more than min_free_vercel_deploys are left. autopilot/* branches build no previews (vercel.json git.deploymentEnabled). Owner pages need a login, so the visual gate only sees /login; owner-page UI is covered by vitest view tests and the owner's look at the PR."
+  },
+  "planner": {
+    "enabled": true,
+    "max_proposals": 5,
+    "auto_accept_risk": [],
+    "context_command": "npm run typecheck"
+  },
+  "notify": {
+    "telegram": true,
+    "events": [
+      "task_done",
+      "task_blocked",
+      "needs_human",
+      "pr_opened",
+      "budget_hit",
+      "paused",
+      "rate_limited",
+      "proposals",
+      "run_error"
+    ],
+    "run_summary": "when_something_happened"
+  }
+}
