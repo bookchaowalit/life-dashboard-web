@@ -10,7 +10,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ m
   const { month } = await searchParams;
   const result = await loadOwnerCash(process.env, { month });
   return (
-    <Shell title="เงินสดเจ้าของ" subtitle="รายได้ → ค่าธรรมเนียม → ค่าใช้จ่าย → ภาษี → เงินสดที่เจ้าของใช้ได้ เทียบเป้ารายเดือน (อ่านอย่างเดียว)">
+    <Shell title="เงินสดเจ้าของ" subtitle="รายได้ หักค่าธรรมเนียม ค่าใช้จ่าย และภาษี เป็นเงินสดที่เจ้าของใช้ได้ เทียบเป้ารายเดือน">
       <Gate result={result}>{(data) => <View data={data} />}</Gate>
     </Shell>
   );
