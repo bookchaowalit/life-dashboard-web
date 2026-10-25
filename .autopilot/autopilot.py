@@ -380,7 +380,11 @@ def load_budget() -> Budget:
             b.ledger_issue = int(url.rstrip("/").split("/")[-1])
         return b
     b.ledger_issue = rows[0]["number"]
-    data = gh_json("api", f"repos/{REPO}/issues/{b.ledger_issue}/comments?per_page=100&sort=created&direction=desc") or []
+    # The issue-comments API returns oldest first and ignores sort/direction: fetch every page and
+    # order newest first here, or the breaker counts failures from before the last pause.
+    pages = gh_json("api", "--paginate", "--slurp", f"repos/{REPO}/issues/{b.ledger_issue}/comments?per_page=100") or []
+    data = [c for page in pages for c in (page if isinstance(page, list) else [page])]
+    data.sort(key=lambda c: c.get("created_at", ""), reverse=True)
     today = now_bkk().date().isoformat()
     for c in data:
         if (c.get("user") or {}).get("login") != CONFIG["backlog"]["ledger_author"]:
