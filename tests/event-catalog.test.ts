@@ -98,12 +98,14 @@ describe('dashboard spec', () => {
 });
 
 describe('outcome review file', () => {
-  it('OR-301, pending go-live, decisions table with a placeholder row, not a template', () => {
+  it('OR-301, pending with a due date, decisions table with a placeholder row, not a template', () => {
     const review = read('docs/measurement/OUTCOME-REVIEW-001.md');
     const front = review.slice(0, review.indexOf('\n---', 3));
     expect(front).not.toMatch(/status:\s*template/);
     expect(review).toMatch(/\| Review ID \| OR-301 \|/);
-    expect(review).toMatch(/\| Status \| pending go-live \|/);
+    // Still pending (backlog-sync acts only on "decided"); the due date is filled in at go-live.
+    expect(review).toMatch(/\| Status \| pending\b[^|]*\|/);
+    expect(review).toMatch(/\| Due \| \d{4}-\d{2}-\d{2}\b/);
     expect(review).toContain('| # | Decision | Type | Owner | Due | Tracked in |');
     expect(review).toMatch(/\| 1 \| \[[^\]]+\] \|/);
   });
