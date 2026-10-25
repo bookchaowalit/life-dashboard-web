@@ -55,7 +55,7 @@ read-only and are only counted as page views.
 | Charter objectives | OBJ-01 from `PRODUCT.md`: "the owner opens one page each day and can act on tasks and habits without opening a terminal" |
 | Analytics / data source of truth | PostHog Cloud EU, shared own-products project, `product = "life-dashboard"` (ADR-0005 D-2). Cross-check: the habits and tasks cells (system of record for the writes) |
 | Dashboard | PostHog dashboard "Life Dashboard pilot" — spec in [`analytics/posthog/dashboard.json`](../../analytics/posthog/dashboard.json), created by the owner after sign-up (A-1) |
-| Next review | OR-301 ([OUTCOME-REVIEW-001.md](OUTCOME-REVIEW-001.md)) — due go-live + 30 days; pending go-live |
+| Next review | OR-301 ([OUTCOME-REVIEW-001.md](OUTCOME-REVIEW-001.md)) — due 2026-11-25 (go-live 2026-10-26 + 30 days) |
 
 ## KPI tree
 
