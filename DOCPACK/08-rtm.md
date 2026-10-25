@@ -55,7 +55,7 @@ related: 05-srs.md, 06-ux-flows.md, 07-test-uat.md, 12-trd-api-data.md
 | ID | ช่องว่าง | ผลกระทบ | ข้อเสนอ |
 |---|---|---|---|
 | GAP-01 | ไม่มี E2E/browser test ของ owner journey | ไม่พิสูจน์ login จริงกับ Google และ UX บน hosted | เพิ่มชุด browser acceptance ก่อน exit phase 1 |
-| GAP-02 | ไม่มี UI/component test ของ module metadata (FR-12–FR-15) และคลาวด์ (FR-18) | regression ด้าน UI ตรวจไม่พบ | เพิ่ม component test หรือ E2E |
+| GAP-02 | ไม่มี UI/component test ของ module metadata (FR-12–FR-15) และคลาวด์ (FR-18) | regression ด้าน UI ตรวจไม่พบ | **ปิดส่วน view test แล้ว:** `tests/metadata-views.test.tsx` (accounts, integrations, SaaS, knowledge, cloud; fixture เท่านั้น) + `tests/support/render-client.tsx` (harness). ยังไม่มี E2E |
 | GAP-03 | parity test ข้าม (TC-27) | ความเข้ากันของ JWT Web ↔ Python ไม่ถูกตรวจทุกครั้ง | ตั้ง `SERVICE_AUTH_PYTHON` ใน CI |
 | GAP-04 | ไม่มี test ของ `requirePageOwner` และ shell (FR-05, FR-06) | หน้าที่ลืมเรียก guard อาจหลุด | เพิ่ม test ตรวจว่าทุก `app/*/page.tsx` เรียก guard |
 | GAP-05 | hosted smoke/UAT ยังไม่ได้รัน | ยังไม่มีหลักฐาน phase 1 | ทำหลัง activation prerequisites ครบ |
