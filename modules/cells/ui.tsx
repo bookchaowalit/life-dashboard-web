@@ -31,9 +31,9 @@ export function Gate<T>({ result, children }: { result: Loaded<T>; children: (da
   return result.ok ? <>{children(result.data)}</> : <Unavailable cell={result.cell} code={result.code} />;
 }
 
-export function Progress({ percent }: { percent: number }) {
+export function Progress({ percent, label = 'ความคืบหน้า' }: { percent: number; label?: string }) {
   const value = Math.max(0, Math.min(100, Math.round(percent)));
-  return <span className="cells-progress" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${value}%` }} /></span>;
+  return <span className="cells-progress" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${value}%` }} /></span>;
 }
 
 export const baht = (value: number, currency: string) =>
