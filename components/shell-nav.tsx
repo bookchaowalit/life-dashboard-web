@@ -7,6 +7,13 @@ import { VISIBLE_MODULES } from '@/lib/modules';
 
 export default function ShellNav() {
   const pathname = usePathname();
+  if (pathname === '/login') {
+    return (
+      <nav className="shell-nav" aria-label="เมนูหลัก">
+        <Link href="/" className="shell-brand">Solo Empire</Link>
+      </nav>
+    );
+  }
   return (
     <nav className="shell-nav" aria-label="เมนูหลัก">
       <Link href="/" className="shell-brand">Solo Empire</Link>
@@ -23,7 +30,7 @@ export default function ShellNav() {
           </li>
         ))}
       </ul>
-      {pathname !== '/login' && <form action="/api/auth/logout" method="post"><button type="submit">ออกจากระบบ</button></form>}
+      <form action="/api/auth/logout" method="post"><button type="submit">ออกจากระบบ</button></form>
     </nav>
   );
 }
