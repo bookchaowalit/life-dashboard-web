@@ -585,7 +585,11 @@ def capture(src: Path, port: int, pages: list[str], out: Path) -> tuple[dict, st
         raise RuntimeError("platform-agent-skills checkout not available")
     if src != ROOT:
         if not (src / "node_modules").exists():
-            (src / "node_modules").symlink_to(ROOT / "node_modules")
+            # its own install, not a symlink to ROOT's: Next 16/Turbopack will not resolve files
+            # outside the workspace root, and the baseline must not share packages with the branch
+            code, out_i = run("npm ci --no-audit --no-fund --prefer-offline", cwd=src, timeout=900)
+            if code != 0:
+                raise RuntimeError(f"baseline npm ci failed: {tail(out_i, 15)}")
         code, out_b = run("npm run build", cwd=src, timeout=900)
         if code != 0:
             raise RuntimeError(f"baseline build failed: {tail(out_b, 15)}")
