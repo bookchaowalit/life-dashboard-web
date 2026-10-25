@@ -23,3 +23,28 @@ jobs:
 
   security:
     uses: bookchaowalit/platform-ci-workflows/.github/workflows/security.yml@87dc5e1c7e0416886a6371d5a101bb2ccba38edd # v1.1.1
+
+  autopilot-pr-status:
+    # Autopilot runs this workflow on its own PR branches with workflow_dispatch (a PR opened with
+    # GITHUB_TOKEN starts no workflow). Such a run is not attached to the PR, so report the overall
+    # result as a commit status on the head commit, which the PR's checks list does show.
+    name: CI (autopilot PR)
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs: [web, security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Report the result on the head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          state=success
+          for r in $RESULTS; do [ "$r" = success ] || state=failure; done
+          gh api "repos/$REPO/statuses/$SHA" -f state="$state" -f context="CI (autopilot PR)" \
+            -f target_url="$RUN_URL" -f description="ci.yml (workflow_dispatch): $state"

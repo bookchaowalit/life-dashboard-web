@@ -118,7 +118,8 @@
     ],
     "approvers": [
       "bookchaowalit"
-    ]
+    ],
+    "ci_workflow": "ci.yml"
   },
   "deploy": {
     "auto": true,

@@ -29,6 +29,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  # actions: write lets the loop dispatch ci.yml on its PR branches (a GITHUB_TOKEN PR starts no workflow)
+  actions: write
   contents: write
   issues: write
   pull-requests: write

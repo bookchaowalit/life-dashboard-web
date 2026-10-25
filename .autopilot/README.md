@@ -27,7 +27,11 @@ repo นี้ต่อ Vercel Git อยู่ (project `owner-web`, production
 5. หลัง push Vercel deploy production เอง และ `deploy-smoke.yml` ตรวจหน้าจริงจาก deployment status
 
 branch `autopilot/*` ไม่สร้าง preview deploy (`vercel.json` → `git.deploymentEnabled: {"autopilot/*": false}`) เพื่อไม่ให้กินโควตาร่วม
-PR ที่ autopilot เปิดด้วย `GITHUB_TOKEN` จะไม่ trigger workflow `CI` (ข้อจำกัดของ GitHub) gate ของ loop จึงเป็นตัวตรวจหลัก และ CI บน `main` ตรวจซ้ำหลัง merge
+**CI บน PR ของ autopilot (เจ้าของสั่ง 2026-10-26):** PR ที่เปิดด้วย `GITHUB_TOKEN` ไม่ trigger workflow อื่น (ข้อจำกัดของ GitHub) loop จึง**สั่ง `ci.yml` ด้วย `workflow_dispatch` บน branch ของ PR เอง** (ต้องมี `actions: write`) ทั้งหลังเปิด PR และทุกต้น run สำหรับ PR ที่ยังไม่มี CI บน head
+ผลของ run ผูกกับ `head_sha` ของ branch จึงขึ้นเป็น check บน commit ของ PR · ก่อน merge PR ที่อนุมัติ loop ดู run ล่าสุดของ `ci.yml` บน `Autopilot-Head`:
+เขียว → ไปต่อ (โควตา Vercel ฯลฯ) · ยังรัน หรือยังไม่มี (สั่งให้) → `waiting_ci` รอ run ถัดไป · ไม่ผ่าน → คอมเมนต์ ถอด label ไม่ merge (`ci_failed`) · ถูก cancel หรือค้าง `action_required` (run ของ `pull_request` ที่ bot เปิดต้องให้คนกด approve) → สั่ง dispatch ใหม่
+run แบบ dispatch ไม่ผูกกับ PR (แท็บ Checks ของ PR จะว่าง) `ci.yml` จึงมี job `CI (autopilot PR)` ที่รันเฉพาะ `workflow_dispatch` และโพสต์ commit status ผลรวมพร้อม link ของ run ไว้บน head commit ซึ่ง PR แสดง (ใช้แค่ `statuses: write` ของ `GITHUB_TOKEN`) · มีผลกับ branch ที่แตกจาก main หลังเปลี่ยนนี้
+test ของ gate นี้: `python3 -m unittest discover -s .autopilot/tests`
 
 ห้ามเปลี่ยน `merge.mode` กลับเป็น `local-merge` จนกว่าเจ้าของจะตัดสินใจใหม่
 

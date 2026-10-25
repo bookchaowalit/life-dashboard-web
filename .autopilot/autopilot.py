@@ -828,6 +828,7 @@ def finish_passed(task: Task, record: dict, verdict: dict, results: list[GateRes
                           + (f" เมื่อโควตา Vercel เหลือมากกว่า {CONFIG['merge']['min_free_vercel_deploys']} deploy" if pr_approval() else "")
                           + f"\n\nAutopilot-Head: {head} (gate ตรวจ commit นี้ ถ้ามี push ใหม่ label อนุมัติจะไม่มีผล)\n\nRefs #{task.number}\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)")
             record["pr"] = pr
+            dispatch_ci(task.branch)  # the PR's own event starts no workflow (GITHUB_TOKEN)
         issue_comment(task.number, evidence + f"\n\n➡️ เปิด PR รออนุมัติ: {record.get('pr', '(sandbox)')}")
         set_status(task.number, "needs_human")
         telegram("pr_opened", f"🟡 #{task.number} {esc(task.title)}\nผ่านทุก gate แต่ต้องอนุมัติ: {esc('; '.join(reasons))}\nPR: {record.get('pr', '-')}\nใส่ label <code>{LABELS['approved']}</code> เพื่อให้ merge")
@@ -935,6 +936,57 @@ def finish_needs_human(task: Task, record: dict, reason: str) -> dict:
 
 # --------------------------------------------------------------------------- approvals / planner
 
+# ------------------------------------------------------------------ CI on autopilot PRs
+# A PR opened with GITHUB_TOKEN triggers no other workflow, so the loop dispatches the repo's CI
+# workflow on the PR branch (workflow_dispatch is allowed for GITHUB_TOKEN; needs `actions: write`).
+# The run's head_sha is the branch head, so its result belongs to the commit the gates checked.
+CI_BAD = ("failure", "timed_out", "startup_failure")  # action_required = held for approval, not a result
+
+
+def ci_verdict(runs: list[dict], sha: str) -> str:
+    """success | failed | pending | missing, from the newest CI run for ``sha``."""
+    mine = sorted((r for r in runs if r.get("head_sha") == sha), key=lambda r: r.get("run_number", 0))
+    if not mine:
+        return "missing"
+    latest = mine[-1]
+    if latest.get("status") != "completed":
+        return "pending"
+    if latest.get("conclusion") == "success":
+        return "success"
+    if latest.get("conclusion") in CI_BAD:
+        return "failed"
+    return "missing"  # cancelled/skipped/neutral/stale/action_required: says nothing about the code, run it again
+
+
+def ci_runs(sha: str) -> list[dict]:
+    data = gh_json("api", f"repos/{REPO}/actions/workflows/{CONFIG['merge']['ci_workflow']}/runs?head_sha={sha}&per_page=20") or {}
+    return data.get("workflow_runs", []) if isinstance(data, dict) else []
+
+
+_DISPATCHED: set[str] = set()
+
+
+def dispatch_ci(branch: str) -> None:
+    if branch in _DISPATCHED:  # once per run: CI cancels an in-progress run for the same ref
+        return
+    _DISPATCHED.add(branch)
+    if writes_allowed():
+        gh("workflow", "run", CONFIG["merge"]["ci_workflow"], "--repo", REPO, "--ref", branch, check=False)
+        log(f"CI dispatched on {branch}")
+    else:
+        log(f"(no write) would dispatch CI on {branch}")
+
+
+def ensure_pr_ci() -> None:
+    """Every open autopilot PR gets a CI run on its head, so the owner sees checks before approving."""
+    prs = gh_json("pr", "list", "--repo", REPO, "--state", "open", "--json", "number,headRefName,headRefOid,isCrossRepository,author") or []
+    for pr in prs:
+        if (pr["headRefName"].startswith(CONFIG["branch_prefix"]) and not pr.get("isCrossRepository")
+                and (pr.get("author") or {}).get("login") in CONFIG["backlog"]["pr_authors"]
+                and ci_verdict(ci_runs(pr["headRefOid"]), pr["headRefOid"]) == "missing"):
+            dispatch_ci(pr["headRefName"])
+
+
 def merge_approved_prs(budget: Budget) -> None:
     prs = gh_json("pr", "list", "--repo", REPO, "--state", "open", "--label", LABELS["approved"],
                   "--json", "number,headRefName,headRefOid,title,url,body,isCrossRepository,author") or []
@@ -959,6 +1011,23 @@ def merge_approved_prs(budget: Budget) -> None:
                     gh("pr", "comment", str(pr["number"]), "--repo", REPO, "--body",
                        "มี commit ใหม่หลังจากที่ gate ตรวจ (หรือไม่มี `Autopilot-Head`) จึงถอด label อนุมัติออก · ตรวจ diff ใหม่ "
                        "แล้วปิด PR นี้และเปลี่ยน issue กลับเป็น `autopilot:todo` เพื่อให้ loop ทำและตรวจใหม่", check=False)
+                continue
+            ci = ci_verdict(ci_runs(pr["headRefOid"]), pr["headRefOid"])
+            if ci in ("missing", "pending"):
+                log(f"approved PR #{pr['number']}: CI {ci} on {pr['headRefOid'][:7]} — waiting for the next run")
+                if ci == "missing":
+                    dispatch_ci(pr["headRefName"])
+                budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "waiting_ci", "pr": pr["url"]})
+                continue
+            if ci == "failed":
+                log(f"approved PR #{pr['number']}: CI failed on {pr['headRefOid'][:7]} — label removed, not merging")
+                budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "ci_failed", "pr": pr["url"]})
+                if writes_allowed():
+                    gh("pr", "edit", str(pr["number"]), "--repo", REPO, "--remove-label", LABELS["approved"], check=False)
+                    gh("pr", "comment", str(pr["number"]), "--repo", REPO, "--body",
+                       f"CI (`{CONFIG['merge']['ci_workflow']}`) ไม่ผ่านบน `{pr['headRefOid'][:7]}` จึงถอด label อนุมัติออกและไม่ merge · "
+                       "ดู log ของ CI แล้วปิด PR นี้และเปลี่ยน issue กลับเป็น `autopilot:todo` ให้ loop ทำใหม่", check=False)
+                telegram("task_blocked", f"⛔ CI ไม่ผ่านบน PR ที่อนุมัติ: {esc(pr['title'])} → ถอด label ไม่ merge\n{pr['url']}")
                 continue
             if free is None or free - 1 < keep:
                 postponed.append(pr)
@@ -1105,7 +1174,7 @@ def main() -> int:
         budget = load_budget()
         fails = 0
         for o in budget.recent_outcomes:
-            if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota", "needs_owner_merge"):
+            if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota", "needs_owner_merge", "waiting_ci", "ci_failed"):
                 continue
             if o not in ("blocked", "merge_failed"):
                 break
@@ -1119,6 +1188,7 @@ def main() -> int:
         if budget.tasks_today >= LIMITS["max_tasks_per_day"]:
             raise StopRun(f"ครบ {LIMITS['max_tasks_per_day']} งาน/วันแล้ว", "run_summary")
         preflight()
+        ensure_pr_ci()
         merge_approved_prs(budget)
         baseline: dict = {}
         done = 0
