@@ -25,4 +25,21 @@ describe('ShellNav', () => {
     pathname.value = '/login';
     expect(renderToStaticMarkup(<ShellNav />)).not.toContain('ออกจากระบบ');
   });
+
+  it('/login: brand only, no module links, no logout', () => {
+    pathname.value = '/login';
+    const html = renderToStaticMarkup(<ShellNav />);
+    expect(html).toContain('Solo Empire');
+    expect(html).not.toContain('<ul');
+    expect(html).not.toContain('↗');
+    expect(html).not.toContain('/api/auth/logout');
+  });
+
+  it('/tasks: module links and logout are shown', () => {
+    pathname.value = '/tasks';
+    const html = renderToStaticMarkup(<ShellNav />);
+    expect(html).toContain('Solo Empire');
+    expect(html).toContain('<ul');
+    expect(html).toContain('/api/auth/logout');
+  });
 });
