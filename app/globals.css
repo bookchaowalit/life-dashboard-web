@@ -3,7 +3,10 @@
 html, body { margin: 0; background: #f7f7f4; color: #1d211f; font-family: 'Noto Sans Thai', Tahoma, sans-serif; }
 .shell-nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 24px; padding: 0 24px; min-height: 52px; background: #1d211f; color: #fff; }
 .shell-nav ul { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.shell-nav a { color: #e8ece9; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 14px; }
+.shell-nav a { display: inline-flex; align-items: center; min-height: 32px; color: #e8ece9; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 14px; }
+.shell-nav button { min-height: 32px; padding: 6px 12px; border: 1px solid #5a625d; border-radius: 6px; background: transparent; color: #e8ece9; font: inherit; font-size: 14px; cursor: pointer; }
+.shell-nav button:hover { background: #333a36; }
+.shell-nav button:focus-visible { outline: 2px solid #c8f25b; outline-offset: 2px; }
 .shell-nav a:hover { background: #333a36; }
 .shell-nav a[aria-current="page"] { background: #c8f25b; color: #1d211f; font-weight: 600; }
 .shell-nav a:focus-visible { outline: 2px solid #c8f25b; outline-offset: 2px; }
@@ -16,7 +19,7 @@ html, body { margin: 0; background: #f7f7f4; color: #1d211f; font-family: 'Noto 
 .shell-card:hover { border-color: #1d211f; }
 .shell-card strong { display: block; font-size: 1.05rem; margin-bottom: 6px; }
 .shell-card span { color: #5a5f57; font-size: 13px; }
-@media (max-width: 700px) { .shell-nav { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 16px; } .shell-home { padding: 24px 16px; } }
+@media (max-width: 700px) { .shell-nav { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 16px; } .shell-nav ul { gap: 6px; } .shell-nav a, .shell-nav button { min-height: 44px; } .shell-home { padding: 24px 16px; } }
 /* Analytics consent (components/analytics): bottom sheet below the sticky nav; both choices share one rule. */
 .shell-consent { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 40; max-width: 560px; margin: 0 auto; padding: 16px; border: 1px solid #d3d4cb; border-radius: 8px; background: #fff; color: #1d211f; box-shadow: 0 8px 24px rgba(29, 33, 31, .18); font-size: 14px; line-height: 1.55; }
 .shell-consent-title { margin: 0; font-weight: 700; }
