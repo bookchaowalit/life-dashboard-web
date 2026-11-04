@@ -57,7 +57,7 @@ related: 05-srs.md, 06-ux-flows.md, 07-test-uat.md, 12-trd-api-data.md
 | GAP-01 | ไม่มี E2E/browser test ของ owner journey | ไม่พิสูจน์ login จริงกับ Google และ UX บน hosted | เพิ่มชุด browser acceptance ก่อน exit phase 1 |
 | GAP-02 | ไม่มี UI/component test ของ module metadata (FR-12–FR-15) และคลาวด์ (FR-18) | regression ด้าน UI ตรวจไม่พบ | เพิ่ม component test หรือ E2E |
 | GAP-03 | parity test ข้าม (TC-27) | ความเข้ากันของ JWT Web ↔ Python ไม่ถูกตรวจทุกครั้ง | ตั้ง `SERVICE_AUTH_PYTHON` ใน CI |
-| GAP-04 | ไม่มี test ของ `requirePageOwner` และ shell (FR-05, FR-06) | หน้าที่ลืมเรียก guard อาจหลุด | เพิ่ม test ตรวจว่าทุก `app/*/page.tsx` เรียก guard |
+| GAP-04 | ~~ไม่มี test ของ `requirePageOwner` และ shell (FR-05, FR-06)~~ **ปิดแล้ว** | หน้าที่ลืมเรียก guard อาจหลุด | `tests/owner-page-guard.test.ts` ตรวจว่าทุก `app/**/page.tsx` ยกเว้น `/login` เรียก `requirePageOwner()` |
 | GAP-05 | hosted smoke/UAT ยังไม่ได้รัน | ยังไม่มีหลักฐาน phase 1 | ทำหลัง activation prerequisites ครบ |
 | GAP-06 | ไม่มี NFR วัดได้สำหรับ latency/uptime/RTO/RPO | ประเมิน go-live ไม่ได้ | เจ้าของกำหนดเป้าหมาย **[ต้องยืนยัน]** |
 | GAP-07 | ไม่พบ CI pipeline ของ `apps/solo-web` | test อาจไม่ถูกรันก่อน deploy | **[ต้องยืนยัน]** แผน CI (WP8) |
