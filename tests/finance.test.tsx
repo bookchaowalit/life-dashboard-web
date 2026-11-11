@@ -14,7 +14,7 @@ const env = Object.fromEntries([
 ]);
 
 const DATA: Record<string, unknown[]> = {
-  'finance-accounts.example/v1/accounts': [{ id: 1, name: 'KBank', account_type: 'bank', currency: 'THB', owner_scope: 'personal' }],
+  'finance-accounts.example/v1/accounts': [{ id: 1, name: 'KBank', account_type: 'bank', currency: 'THB', scope: 'personal' }],
   'transactions.example/v1/transactions': [
     { id: 3, transaction_date: '2026-10-10', transaction_type: 'expense', amount: 300, currency: 'THB', category: 'food' },
     { id: 2, transaction_date: '2026-10-05', transaction_type: 'income', amount: 1000, currency: 'USD', description: 'client' },

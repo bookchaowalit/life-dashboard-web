@@ -33,12 +33,12 @@ const REVENUE = [
 ];
 
 const TRANSACTIONS = [
-  { id: 1, transaction_date: '2026-11-04', transaction_type: 'transfer', amount: 7600, currency: 'THB', owner_scope: 'solo_empire', source: 'stripe', metadata: { stripe_payout: 'po_1' } },
-  { id: 2, transaction_date: '2026-11-04', transaction_type: 'fee', amount: 300, currency: 'THB', owner_scope: 'solo_empire', source: 'stripe', metadata: { stripe_payout: 'po_1' } },
-  { id: 3, transaction_date: '2026-11-06', transaction_type: 'expense', amount: 1500, currency: 'THB', owner_scope: 'solo_empire', category: 'software', description: 'Ahrefs' },
-  { id: 4, transaction_date: '2026-11-07', transaction_type: 'fee', amount: 30, currency: 'THB', owner_scope: 'solo_empire', source: 'bank', description: 'transfer fee' },
-  { id: 5, transaction_date: '2026-11-07', transaction_type: 'expense', amount: 800, currency: 'THB', owner_scope: 'personal', category: 'food' },
-  { id: 6, transaction_date: '2026-10-28', transaction_type: 'expense', amount: 5000, currency: 'THB', owner_scope: 'solo_empire' },
+  { id: 1, transaction_date: '2026-11-04', transaction_type: 'transfer', amount: '7600.0000', currency: 'THB', scope: 'solo_empire', source: 'stripe', metadata: { stripe_payout: 'po_1' } },
+  { id: 2, transaction_date: '2026-11-04', transaction_type: 'fee', amount: '300.0000', currency: 'THB', scope: 'solo_empire', source: 'stripe', metadata: { stripe_payout: 'po_1' } },
+  { id: 3, transaction_date: '2026-11-06', transaction_type: 'expense', amount: '1500.0000', currency: 'THB', scope: 'solo_empire', category: 'software', description: 'Ahrefs' },
+  { id: 4, transaction_date: '2026-11-07', transaction_type: 'fee', amount: '30.0000', currency: 'THB', scope: 'solo_empire', source: 'bank', description: 'transfer fee' },
+  { id: 5, transaction_date: '2026-11-07', transaction_type: 'expense', amount: '800.0000', currency: 'THB', scope: 'personal', category: 'food' },
+  { id: 6, transaction_date: '2026-10-28', transaction_type: 'expense', amount: 5000, currency: 'THB', scope: 'solo_empire' },
 ];
 const RECONCILIATIONS = [{ id: 1, source_ref: 'po_1', status: 'matched' }, { id: 2, source_ref: 'po_old', status: 'exception' }];
 
@@ -122,7 +122,7 @@ describe('owner cash', () => {
     };
     const result = await loadOwnerCash(env, { fetch, now: NOW });
     expect(result.ok).toBe(true);
-    expect(seen.some((s) => s.includes('owner_scope=solo_empire'))).toBe(true);
+    expect(seen.some((s) => s.includes('scope=solo_empire') && !s.includes('owner_scope'))).toBe(true);
     expect(seen.some((s) => s.includes('since=2026-10-01') && s.includes('until=2026-11-30'))).toBe(true);
     const html = renderToStaticMarkup(<OwnerCashView data={result.ok ? result.data : (null as never)} />);
     expect(html).toContain('เงินสดที่เจ้าของใช้ได้');

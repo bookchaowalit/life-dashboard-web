@@ -2,7 +2,7 @@
  * Owner cash for one month (EOS gap G3, Record-to-Report): the business money the owner can take out.
  *
  * revenue (ledger, received) − payment fees (ledger row notes, from the Stripe reconciler) = gross profit
- * − operating expenses (transactions, owner_scope solo_empire) = operating profit
+ * − operating expenses (transactions, scope solo_empire) = operating profit
  * − tax set-aside − reinvestment = owner cash.
  *
  * Every figure stays per currency (no conversion); the target is in THB. Personal transactions are left out.
@@ -94,7 +94,7 @@ export function computeOwnerCash(
   const { start, end } = monthBounds(month);
   const inMonth = (value: unknown) => day(value) >= start && day(value) <= end;
   const revenue = input.revenue.filter((r) => r.received && inMonth(r.revenue_date));
-  const business = input.transactions.filter((t) => t.owner_scope === BUSINESS_SCOPE && inMonth(t.transaction_date));
+  const business = input.transactions.filter((t) => t.scope === BUSINESS_SCOPE && inMonth(t.transaction_date));
 
   const lines = new Map<string, StreamLine>();
   const revenueBy: Money = {}; const feesBy: Money = {}; const expensesBy: Money = {};
@@ -167,7 +167,7 @@ export function loadOwnerCash(env: Env, options: OwnerCashOptions = {}): Promise
     const [revenue, transactions, reconciliations] = await Promise.all([
       // From the start of last month: rows paid out this month can be dated last month, and the fee check needs them.
       ledger.revenue({ since: monthBounds(previousMonth(month)).start, until: end, limit: 500 }),
-      new CellClient(resolveCell('transactions', env, overrides)).list('transactions', { owner_scope: BUSINESS_SCOPE }, 'desc'),
+      new CellClient(resolveCell('transactions', env, overrides)).list('transactions', { scope: BUSINESS_SCOPE }, 'desc'),
       new CellClient(resolveCell('reconciliations', env, overrides)).list('reconciliations', { source_type: 'wallet_export' }, 'desc'),
     ]);
     return computeOwnerCash({ revenue: revenue.rows, transactions, reconciliations }, month, today, settingsFrom(env));
