@@ -83,6 +83,8 @@ export const BACKENDS: Record<string, Backend> = {
 };
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+const GATEWAY_HOST = 'gateway.bookchaowalit.com';
+const GATEWAY_ROUTE = /^\/v1\/[a-z][a-z0-9-]{1,62}\/?$/;
 
 export type OriginResult = { ok: true; origin: string } | { ok: false; code: string; message: string };
 
@@ -95,7 +97,10 @@ export function resolveOrigin(backend: Backend, env: Record<string, string | und
     return { ok: false, code: 'origin_invalid', message: `ตั้งค่า ${backend.originEnv} ไม่ถูกต้อง` };
   }
   const loopback = url.protocol === 'http:' && LOOPBACK.has(url.hostname);
-  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
+  // Besides a bare origin, exactly the edge gateway route https://gateway.bookchaowalit.com/v1/<route>.
+  const gatewayRoute = url.protocol === 'https:' && url.hostname === GATEWAY_HOST && !url.port &&
+    GATEWAY_ROUTE.test(url.pathname);
+  if (url.username || url.password || (url.pathname !== '/' && !gatewayRoute) || url.search || url.hash ||
     (env.NODE_ENV === 'production' && loopback) || (!loopback && isLoopbackHostname(url.hostname))) {
     return { ok: false, code: 'origin_not_allowed', message: `ตั้งค่า ${backend.originEnv} เป็น origin ที่อนุญาตเท่านั้น` };
   }
@@ -106,7 +111,7 @@ export function resolveOrigin(backend: Backend, env: Record<string, string | und
       message: `${backend.label} API ต้องเป็น loopback หรือ HTTPS ที่เปิดด้วย ${backend.originEnv.replace(/_ORIGIN$/, '')}_ALLOW_REMOTE=true`,
     };
   }
-  return { ok: true, origin: url.origin };
+  return { ok: true, origin: gatewayRoute ? url.origin + url.pathname.replace(/\/$/, '') : url.origin };
 }
 
 export function isAllowed(backend: Backend, method: string, path: string): boolean {

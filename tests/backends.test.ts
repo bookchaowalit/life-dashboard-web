@@ -69,4 +69,17 @@ describe('backend registry', () => {
     });
     expect(BACKENDS.today.serverHeaders).toBeUndefined();
   });
+
+  it('accepts exactly the edge gateway route as a base, nothing else with a path', () => {
+    const env = (value: string) => ({ NODE_ENV: 'production', KNOWLEDGE_API_ORIGIN: value, KNOWLEDGE_API_ALLOW_REMOTE: 'true' });
+    expect(resolveOrigin(BACKENDS.knowledge, env('https://gateway.bookchaowalit.com/v1/knowledge')))
+      .toEqual({ ok: true, origin: 'https://gateway.bookchaowalit.com/v1/knowledge' });
+    expect(resolveOrigin(BACKENDS.knowledge, env('https://gateway.bookchaowalit.com/v1/knowledge/')))
+      .toEqual({ ok: true, origin: 'https://gateway.bookchaowalit.com/v1/knowledge' });
+    for (const bad of ['https://gateway.bookchaowalit.com/v1/knowledge/extra', 'https://elsewhere.example/v1/knowledge',
+      'http://gateway.bookchaowalit.com/v1/knowledge', 'https://gateway.bookchaowalit.com:8443/v1/knowledge',
+      'https://gateway.bookchaowalit.com/v1/knowledge?x=1', 'https://gateway.bookchaowalit.com/api']) {
+      expect(resolveOrigin(BACKENDS.knowledge, env(bad)).ok).toBe(false);
+    }
+  });
 });
