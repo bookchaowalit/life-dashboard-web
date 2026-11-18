@@ -68,7 +68,9 @@ PHASE = "all"
 OUTBOX: list[dict] = []   # intents recorded by the plan and work phases
 PLAN: dict = {}           # plan.json (plan phase output), read by work and publish
 MERGE_QUEUE: list[dict] = []  # approved PRs the plan phase cleared for a merge in publish
-MERGE_GATES: dict[str, dict] = {}  # publish: work-phase gate results on merged trees, by branch
+MERGE_GATES: dict = {}    # publish: merge-gate job output {"preflight_ok", "gates": {branch: {"head", "ok_trees"}}}
+BUNDLE_SHAS: set[str] = set()  # publish: commits imported from the verified work bundle
+_GATE_MISSING: list[str] = []  # publish: merge waited for a gate result on the current merged tree
 
 
 class StopRun(Exception):
@@ -245,7 +247,7 @@ def writes_allowed() -> bool:
 
 def deferred() -> bool:
     """Plan and work phases hold no write token: their GitHub writes and notifications become intents."""
-    return PHASE in ("plan", "work")
+    return PHASE in ("plan", "merge-gate", "work")
 
 
 def emit(kind: str, **fields: Any) -> None:
@@ -706,7 +708,7 @@ def base_sha() -> str:
 def reset_to_base() -> None:
     if ARGS.sandbox:
         sha = git("rev-parse", BASE)
-    elif PHASE == "work":
+    elif PHASE in ("work", "merge-gate"):
         sha = PLAN["base_sha"]  # the commit the plan saw (this job's checkout); fetched anonymously if missing
         if run(["git", "cat-file", "-e", f"{sha}^{{commit}}"])[0] != 0:
             git("fetch", "--quiet", "origin", sha)
@@ -938,9 +940,12 @@ def merge_branch(branch: str, message: str) -> str:
         # main moved since the branch was cut: re-run the command gates on the merged tree. The
         # publish job runs no repo code, so it needs the work job's gate result for this exact tree.
         if PHASE == "publish":
-            tree, att = git("rev-parse", "HEAD^{tree}"), MERGE_GATES.get(branch) or {}
-            if not (att.get("ok") is True and att.get("tree") == tree):
-                log(f"merge of {branch}: no passing work-job gate result for merged tree {tree[:7]} (got {str(att)[:120]})")
+            # publish runs no repo code: it needs the merge-gate job's result (a job output the
+            # maker's job cannot write) for this exact merged tree and approved head
+            tree, att = git("rev-parse", "HEAD^{tree}"), (MERGE_GATES.get("gates") or {}).get(branch) or {}
+            if not (MERGE_GATES.get("preflight_ok") is True and att.get("head") == head_sha and tree in (att.get("ok_trees") or [])):
+                log(f"merge of {branch}: no passing merge-gate result for merged tree {tree[:7]} — waits for the next run")
+                _GATE_MISSING.append(tree)
                 git("reset", "--quiet", "--hard", "HEAD~1")
                 return ""
         elif not all(r.ok for r in command_gates()):
@@ -1112,7 +1117,7 @@ def merge_approved_prs(budget: Budget) -> None:
                         "ดู log ของ CI แล้วปิด PR นี้และเปลี่ยน issue กลับเป็น `autopilot:todo` ให้ loop ทำใหม่")
                 telegram("task_blocked", f"⛔ CI ไม่ผ่านบน PR ที่อนุมัติ: {esc(pr['title'])} → ถอด label ไม่ merge\n{pr['url']}")
                 continue
-            if free is None or free - 1 < keep:
+            if PHASE != "plan" and (free is None or free - 1 < keep):
                 postponed.append(pr)
                 budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "postponed_quota", "pr": pr["url"]})
                 continue
@@ -1120,10 +1125,8 @@ def merge_approved_prs(budget: Budget) -> None:
             log(f"would merge approved PR #{pr['number']} {pr['title']}")
             continue
         if PHASE == "plan":
-            # every check above passed on the GitHub state read now; publish merges it (work gates the merged tree)
+            # candidate for the merge-gate job; publish re-checks approval, head, CI and quota before merging
             MERGE_QUEUE.append({k: pr[k] for k in ("number", "headRefName", "headRefOid", "title", "url")})
-            if free is not None:
-                free -= 1
             continue
         if merge_one(pr, budget) and free is not None:
             free -= 1
@@ -1147,7 +1150,12 @@ def merge_one(pr: dict, budget: Budget) -> str:
     issue = re.match(re.escape(CONFIG["branch_prefix"]) + r"(\d+)-", pr["headRefName"])
     msg = f"Merge {pr['headRefName']}: {pr['title']}\n\nApproved via label on {pr['url']}" + (f"\nCloses #{issue.group(1)}" if issue else "") + TRAILER
     _PUSH_BLOCKED.clear()
+    _GATE_MISSING.clear()
     sha = merge_branch(pr["headRefName"], msg)
+    if not sha and _GATE_MISSING:
+        # main moved and nobody has gated this merged tree yet: not a failure, the next run gates it
+        budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "waiting_gate", "pr": pr["url"]})
+        return ""
     if not sha and _PUSH_BLOCKED:
         # Branch protection on the base branch refuses GITHUB_TOKEN: the owner merges this one.
         budget.run_tasks.append({"issue": None, "title": pr["title"], "outcome": "needs_owner_merge", "pr": pr["url"]})
@@ -1236,7 +1244,7 @@ def preflight() -> None:
     if not ARGS.dry_run and not shutil.which("claude"):
         raise StopRun("ไม่พบ claude CLI")
     if writes_allowed():
-        if PHASE != "work":
+        if PHASE not in ("work", "merge-gate"):
             git("fetch", "--quiet", "origin", BASE)
         reset_to_base()
         code, out = run("npm test", timeout=600)
@@ -1257,7 +1265,7 @@ def not_dumpable() -> None:
 def consecutive_failures(budget: Budget) -> int:
     fails = 0
     for o in budget.recent_outcomes:
-        if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota", "needs_owner_merge", "waiting_ci", "ci_failed"):
+        if o in ("interrupted", "pr_opened", "needs_human", "postponed_quota", "needs_owner_merge", "waiting_ci", "ci_failed", "waiting_gate"):
             continue
         if o not in ("blocked", "merge_failed"):
             break
@@ -1321,11 +1329,17 @@ def write_output(**values: Any) -> None:
                 f.write(f"{k}={v}\n")
 
 
+def remote_tip(branch: str) -> str:
+    """The branch head on origin now ("" if it does not exist): publish pushes with this lease."""
+    out = run(["git", "ls-remote", "origin", f"refs/heads/{branch}"])[1].split()
+    return out[0] if out and re.fullmatch(r"[0-9a-f]{40}", out[0]) else ""
+
+
 def phase_plan() -> int:
     """Read GitHub (read-only token) and decide what the run will do. Runs no repo code."""
-    out: dict[str, Any] = {"kind": "autopilot-plan", "version": 1, "run_url": run_url(), "dry_run": ARGS.dry_run,
+    out: dict[str, Any] = {"kind": "autopilot-plan", "version": 2, "run_url": run_url(), "dry_run": ARGS.dry_run,
                            "max_tasks": ARGS.max_tasks, "skip": False, "stop": None, "error": None, "base_sha": "",
-                           "ready": [], "planner": None, "vercel_free": vercel_free()}
+                           "ready": [], "branch_tips": {}, "planner": None}
     budget = Budget()
     try:
         if paused_issue():
@@ -1344,11 +1358,17 @@ def phase_plan() -> int:
                     raise StopRun(f"ครบ {LIMITS['max_tasks_per_day']} งาน/วันแล้ว", "run_summary")
                 git("fetch", "--quiet", "origin", f"+refs/heads/{BASE}:refs/autopilot/base")
                 out["base_sha"] = git("rev-parse", "refs/autopilot/base")
-                ensure_pr_ci()
-                merge_approved_prs(budget)
-                ready = [t for t in list_tasks("todo") if all(issue_closed(d) for d in t.depends_on)]
+                # approved PRs that pass every check now: the merge-gate job gates their merged trees.
+                # Notes and records come from publish, which re-checks everything on fresh state.
+                mark = len(OUTBOX)
+                merge_approved_prs(Budget())
+                del OUTBOX[mark:]
+                # only as many tasks as this run may work on: publish accepts writes for these issues only
+                room = max(0, min(ARGS.max_tasks, LIMITS["max_tasks_per_day"] - budget.tasks_today))
+                ready = [t for t in list_tasks("todo") if all(issue_closed(d) for d in t.depends_on)][:room]
                 out["ready"] = [asdict(t) for t in ready]
-                if not ready and not ARGS.dry_run:
+                out["branch_tips"] = {t.branch: remote_tip(t.branch) for t in ready}
+                if not ready and room and not ARGS.dry_run:
                     out["planner"] = planner_context()
     except StopRun as e:
         out["stop"] = {"reason": e.reason}
@@ -1364,43 +1384,70 @@ def phase_plan() -> int:
     out["budget"] = asdict(budget)
     out["merges"] = MERGE_QUEUE
     out["intents"] = OUTBOX
-    out["work"] = bool(not out["skip"] and not out["stop"] and not out["error"]
-                       and (out["ready"] or out["merges"] or out["planner"] or ARGS.dry_run))
+    go = not out["skip"] and not out["stop"] and not out["error"]
+    out["work"] = bool(go and (out["ready"] or out["planner"] or ARGS.dry_run))
+    out["merge_gate"] = bool(go and out["merges"] and not ARGS.dry_run)
     raw = json.dumps(out, ensure_ascii=False, indent=1).encode()
     ARGS.state_dir.mkdir(parents=True, exist_ok=True)
     (ARGS.state_dir / PLAN_FILE).write_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
-    write_output(plan_sha256=digest, work=str(out["work"]).lower(), base_sha=out["base_sha"])
-    log(f"plan: work={out['work']} ready={len(out['ready'])} merges={len(out['merges'])} intents={len(OUTBOX)} sha256={digest[:12]}")
+    write_output(plan_sha256=digest, work=str(out["work"]).lower(), merge_gate=str(out["merge_gate"]).lower(),
+                 base_sha=out["base_sha"], skip=str(out["skip"]).lower())
+    log(f"plan: work={out['work']} merge_gate={out['merge_gate']} ready={len(out['ready'])} merges={len(out['merges'])} "
+        f"intents={len(OUTBOX)} sha256={digest[:12]}")
     return 0
 
 
-def gate_merges(merges: list[dict]) -> list[dict]:
-    """Work phase: merge each approved PR onto the plan base and run the command gates when main moved."""
-    out = []
+def gate_merges(merges: list[dict]) -> dict[str, dict]:
+    """Merge each approved PR onto the plan base, both on top of the earlier PRs (the order publish
+    merges in) and alone, and run the command gates on every merged tree that differs from the branch."""
+    reset_to_base()
+    base = cum = git("rev-parse", "HEAD")
+    gates: dict[str, dict] = {}
     for m in merges:
         branch, head = m["headRefName"], m["headRefOid"]
-        reset_to_base()
-        base = git("rev-parse", "HEAD")
         run(["git", "fetch", "--quiet", "origin", f"+refs/heads/{branch}:refs/autopilot/pr"])
         if run(["git", "rev-parse", "--verify", "--quiet", "refs/autopilot/pr"])[1].strip() != head:
-            out.append({"branch": branch, "ok": False, "reason": "head moved"})
+            log(f"merge gate {branch}: head moved — skipped")
             continue
-        git("checkout", "--quiet", "--force", "--detach", base)
-        code, _ = run(["git", "merge", "--no-ff", "-m", f"gate {branch}", head])
-        if code != 0:
-            run(["git", "merge", "--abort"])
-            out.append({"branch": branch, "ok": False, "reason": "conflict"})
-            continue
-        tree = git("rev-parse", "HEAD^{tree}")
-        if tree == git("rev-parse", f"{head}^{{tree}}"):
-            out.append({"branch": branch, "tree": tree, "ok": True, "gated": False})
-            continue
-        ok = all(r.ok for r in command_gates())
-        out.append({"branch": branch, "tree": tree, "ok": ok, "gated": True})
-    if merges:
-        reset_to_base()
-    return out
+        branch_tree, ok_trees, next_cum = git("rev-parse", f"{head}^{{tree}}"), [], cum
+        for start in dict.fromkeys([cum, base]):
+            git("checkout", "--quiet", "--force", "--detach", start)
+            git("clean", "-fdq", "-e", "node_modules")
+            code, _ = run(["git", "merge", "--no-ff", "-m", f"gate {branch}", head])
+            if code != 0:
+                run(["git", "merge", "--abort"])
+                continue
+            merged, tree = git("rev-parse", "HEAD"), git("rev-parse", "HEAD^{tree}")
+            if tree == branch_tree or all(r.ok for r in command_gates()):
+                ok_trees.append(tree)
+                if start == cum:
+                    next_cum = merged
+        gates[branch] = {"head": head, "ok_trees": ok_trees}
+        cum = next_cum
+        log(f"merge gate {branch}: {len(ok_trees)} passing tree(s)")
+    reset_to_base()
+    return gates
+
+
+def phase_merge_gate() -> int:
+    """No token, no model: npm test on main, then the command gates on the merged trees of the
+    approved PRs (code a person approved). The result leaves as a job output, which no other job can
+    overwrite (artifacts can be, by the work job's runtime token)."""
+    load_plan(ARGS.plan_sha256)
+    result: dict[str, Any] = {"preflight_ok": False, "gates": {}}
+    try:
+        if PLAN.get("merge_gate"):
+            preflight()
+            result["preflight_ok"] = True
+            result["gates"] = gate_merges(PLAN.get("merges", []))
+    except StopRun as e:
+        log(f"merge gate stopped: {e.reason}")
+    except Exception as e:
+        log(f"merge gate error: {type(e).__name__}: {e}")
+    write_output(merge_gates=json.dumps(result, separators=(",", ":")))
+    log(f"merge gate: {json.dumps(result)[:300]}")
+    return 0
 
 
 def write_bundle(result: dict) -> None:
@@ -1430,17 +1477,13 @@ def phase_work() -> int:
     load_plan(ARGS.plan_sha256)
     budget = budget_from(PLAN["budget"])
     budget.run_tasks = []  # plan-phase records are the plan's; publish joins them
-    result: dict[str, Any] = {"kind": "autopilot-result", "version": 1, "intents": OUTBOX, "merge_gates": [],
-                              "preflight_ok": False, "error": None}
+    result: dict[str, Any] = {"kind": "autopilot-result", "version": 2, "intents": OUTBOX, "error": None}
     stop_reason = "ok"
     try:
         if not PLAN.get("work"):
             stop_reason = "nothing to do"
         else:
             preflight()
-            result["preflight_ok"] = True
-            if not ARGS.dry_run:
-                result["merge_gates"] = gate_merges(PLAN.get("merges", []))
             tasks = [Task(**t) for t in PLAN.get("ready", [])]
             ctx = PLAN.get("planner")
             stop_reason = task_loop(budget, lambda: tasks, lambda: plan(budget, ctx) if ctx else log("planner: skipped (plan)"))
@@ -1494,30 +1537,30 @@ def check_intent(i: Any, tasks: dict[int, Task], seen: dict[str, int]) -> str:
         return "" if is_text(i.get("reason"), 2000) else "bad reason"
     if kind == "create_issue":
         p = i.get("proposal")
-        if seen[kind] > CONFIG["planner"]["max_proposals"] + 3:
+        if seen[kind] > CONFIG["planner"]["max_proposals"] + 3 * len(tasks):  # planner + ≤3 visual-review issues per task
             return "too many proposals"
         ok = (isinstance(p, dict) and is_text(p.get("title"), 300) and is_text(p.get("why", ""), 8000)
               and isinstance(p.get("acceptance", []), list) and all(is_text(a, 1000) for a in p.get("acceptance", []))
               and isinstance(p.get("ui_pages", []), list) and all(is_text(u, 200) for u in p.get("ui_pages", []))
               and i.get("origin") in ("planner", "visual review"))
         return "" if ok else "bad proposal"
-    # push_branch / open_pr: exactly the task's branch, a commit from the bundle on top of the plan base
-    key = f"{kind}:{issue}"
-    seen[key] = seen.get(key, 0) + 1
-    if seen[key] > 1:
+    # push_branch / open_pr: one push per task, to exactly its branch, of a commit from the verified bundle
+    key = f"push:{issue}"
+    if seen.get(key):
         return "second push for this task"
     if i.get("branch") != tasks[issue].branch:
         return f"branch {i.get('branch')!r} is not {tasks[issue].branch}"
     sha = i.get("sha")
     if not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha)):
         return "bad sha"
-    if sha == PLAN["base_sha"] or run(["git", "cat-file", "-e", f"{sha}^{{commit}}"])[0] != 0:
+    if sha == PLAN["base_sha"] or sha not in BUNDLE_SHAS:
         return "commit not in the bundle"
     if run(["git", "merge-base", "--is-ancestor", PLAN["base_sha"], sha])[0] != 0:
         return "commit is not on top of the plan base"
     if kind == "open_pr" and not (is_text(i.get("evidence"), 30000) and isinstance(i.get("reasons"), list)
                                   and all(is_text(r, 500) for r in i["reasons"])):
         return "bad PR text"
+    seen[key] = 1  # only an accepted push takes the task's one push
     return ""
 
 
@@ -1539,7 +1582,10 @@ def execute(i: dict, budget: Budget) -> None:
         create_task_issue(i["proposal"], i["origin"])
     elif kind == "push_branch":
         if writes_allowed():
-            git("push", "--quiet", "--force", "origin", f"{i['sha']}:refs/heads/{i['branch']}")
+            # lease on the tip the plan saw: a person's commits pushed meanwhile are never overwritten
+            lease = (PLAN.get("branch_tips") or {}).get(i["branch"], "")
+            git("push", "--quiet", f"--force-with-lease=refs/heads/{i['branch']}:{lease}", "origin",
+                f"{i['sha']}:refs/heads/{i['branch']}")
     elif kind == "open_pr":
         t = next(Task(**t) for t in PLAN["ready"] if t["number"] == i["issue"])
         rec: dict = {}
@@ -1557,25 +1603,84 @@ def clean_task_record(t: Any) -> dict | None:
     return {k: (v[:500] if isinstance(v, str) else v) for k, v in keep.items()}
 
 
+def import_bundle(errors: list[str]) -> None:
+    bundle = ARGS.result_dir / BUNDLE_FILE if ARGS.result_dir else None
+    if not (bundle and bundle.exists()):
+        return
+    if run(["git", "cat-file", "-e", f"{PLAN['base_sha']}^{{commit}}"])[0] != 0:
+        git("fetch", "--quiet", "origin", PLAN["base_sha"])  # the bundle's prerequisite (main may be newer than this checkout)
+    if run(["git", "bundle", "verify", "--quiet", str(bundle)])[0] != 0:
+        errors.append("work bundle does not verify")
+        return
+    git("fetch", "--quiet", "--no-tags", str(bundle), "+refs/autopilot/out/*:refs/autopilot/in/*")
+    for line in git("for-each-ref", "--format=%(objectname)", "refs/autopilot/in/").splitlines():
+        BUNDLE_SHAS.add(line.strip())
+
+
 def phase_publish() -> int:
-    """The only job with a GitHub write token. Runs no repo code: checks the work job's intents and
-    pushes exactly the gated commits from its bundle."""
+    """The only job with a GitHub write token. Runs no repo code: re-checks approvals, CI and quota,
+    checks the work job's intents and pushes exactly the gated commits from its bundle."""
     load_plan(ARGS.plan_sha256)
-    try:
-        return _publish()
-    except Exception as e:  # unexpected: notify and fail the workflow
-        log(f"publish error: {type(e).__name__}: {e}")
-        telegram("run_error", f"💥 run error (publish): {esc(str(e))[:500]}\n{run_url()}")
-        return 1
-
-
-def _publish() -> int:
     if PLAN.get("skip"):
         log("paused: nothing to publish")
         return 0
+    if ARGS.merge_gates:
+        try:
+            MERGE_GATES.update(json.loads(ARGS.merge_gates))
+        except ValueError:
+            log("merge gate output unreadable — approved merges wait")
+    budget = budget_from(PLAN["budget"])
     errors = [PLAN["error"]] if PLAN.get("error") else []
-    result = None
+    state = {"stop_reason": (PLAN.get("stop") or {}).get("reason") or "", "minutes": 0.0}
+
+    def step(name: str, fn, *a) -> None:  # one failed write must not lose the ledger entry
+        try:
+            fn(*a)
+        except StopRun as e:
+            errors.append(f"{name}: {e.reason}")
+            if e.event == "paused":
+                pause(e.reason)
+        except Exception as e:
+            log(f"publish step {name} failed: {type(e).__name__}: {e}")
+            errors.append(f"{name}: {type(e).__name__}: {str(e)[:200]}")
+
+    result = read_result(errors)
+    if result:
+        account_work(result, budget, state, errors)  # usage first, so the ledger has it whatever fails next
+    step("labels", ensure_labels)
+    if budget.ledger_issue is None and writes_allowed():
+        step("ledger issue", lambda: setattr(budget, "ledger_issue", create_ledger_issue()))
+    for i in PLAN.get("intents", []):  # the plan job's own decisions (trusted: it ran no repo code)
+        step(f"plan {i.get('kind')}", execute, i, budget)
+    if not (PLAN.get("stop") or PLAN.get("error")):
+        step("pr ci", ensure_pr_ci)
+        step("approved merges", merge_approved_prs, budget)  # fresh approval, head, CI and Vercel count
+    if result:
+        step("bundle", import_bundle, errors)
+        intents = result.get("intents") if isinstance(result.get("intents"), list) else []
+        tasks = {t["number"]: Task(**t) for t in PLAN.get("ready", [])}
+        seen: dict[str, int] = {}
+        for n, i in enumerate(intents):
+            why = "too many intents" if n >= MAX_INTENTS else check_intent(i, tasks, seen)
+            if why:
+                log(f"intent refused ({why}): {str(i)[:200]}")
+                errors.append(f"refused work intent: {why}")
+                continue
+            step(f"work {i['kind']}", execute, i, budget)
+    stop_reason = state["stop_reason"]
+    if errors:
+        stop_reason = "; ".join(e for e in [stop_reason] + errors if e)[:900]
+        step("notify", telegram, "run_error", f"💥 run error: {esc(stop_reason)[:500]}\n{run_url()}")
+    if not ARGS.dry_run:
+        step("ledger", write_ledger, budget, stop_reason or "ok", state["minutes"])
+    step("summary", run_summary, budget, stop_reason or "ok", state["minutes"])
+    log(f"publish done: {stop_reason or 'ok'}")
+    return 1 if errors else 0
+
+
+def read_result(errors: list[str]) -> dict | None:
     rpath = ARGS.result_dir / RESULT_FILE if ARGS.result_dir else None
+    result = None
     if rpath and rpath.exists():
         try:
             result = json.loads(rpath.read_text())
@@ -1586,55 +1691,22 @@ def _publish() -> int:
             result = None
     if PLAN.get("work") and result is None:
         errors.append("work job left no result (failed, timed out or cancelled)")
-    ensure_labels()
-    budget = budget_from(PLAN["budget"])
-    if budget.ledger_issue is None and writes_allowed():
-        budget.ledger_issue = create_ledger_issue()
-    for i in PLAN.get("intents", []):  # the plan job's own decisions (trusted: it ran no repo code)
-        execute(i, budget)
-    stop_reason = (PLAN.get("stop") or {}).get("reason") or ""
-    minutes = 0.0
-    if result:
-        MERGE_GATES.update({g["branch"]: g for g in result.get("merge_gates", []) if isinstance(g, dict) and isinstance(g.get("branch"), str)})
-        if PLAN.get("merges") and result.get("preflight_ok") is not True:
-            log("approved merges skipped: work preflight (npm test on main) did not pass")
-        elif PLAN.get("merges"):
-            for m in PLAN["merges"]:
-                merge_one(m, budget)
-        bundle = ARGS.result_dir / BUNDLE_FILE
-        if bundle.exists():
-            if run(["git", "bundle", "verify", "--quiet", str(bundle)])[0] == 0:
-                git("fetch", "--quiet", "--no-tags", str(bundle), "+refs/autopilot/out/*:refs/autopilot/in/*")
-            else:
-                errors.append("work bundle does not verify")
-        ledger = result.get("ledger") if isinstance(result.get("ledger"), dict) else {}
-        budget.run_calls = int(nonneg(ledger.get("claude_calls")))
-        budget.run_usd = float(nonneg(ledger.get("est_usd")))
-        budget.calls_today += budget.run_calls
-        budget.usd_today += budget.run_usd
-        minutes = float(nonneg(ledger.get("minutes")))
-        budget.run_tasks += [r for r in map(clean_task_record, ledger.get("tasks", []) if isinstance(ledger.get("tasks"), list) else []) if r]
-        stop_reason = ledger.get("stop_reason") if is_text(ledger.get("stop_reason"), 500) else stop_reason
-        if result.get("error"):
-            errors.append(str(result["error"])[:500])
-        intents = result.get("intents") if isinstance(result.get("intents"), list) else []
-        tasks = {t["number"]: Task(**t) for t in PLAN.get("ready", [])}
-        seen: dict[str, int] = {}
-        for n, i in enumerate(intents):
-            why = "too many intents" if n >= MAX_INTENTS else check_intent(i, tasks, seen)
-            if why:
-                log(f"intent refused ({why}): {str(i)[:200]}")
-                errors.append(f"refused work intent: {why}")
-                continue
-            execute(i, budget)
-    if errors:
-        stop_reason = "; ".join(e for e in [stop_reason] + errors if e)[:900]
-        telegram("run_error", f"💥 run error: {esc(stop_reason)[:500]}\n{run_url()}")
-    if not ARGS.dry_run:
-        write_ledger(budget, stop_reason or "ok", minutes=minutes)
-    run_summary(budget, stop_reason or "ok", minutes)
-    log(f"publish done: {stop_reason or 'ok'}")
-    return 1 if errors else 0
+    return result
+
+
+def account_work(result: dict, budget: Budget, state: dict, errors: list[str]) -> None:
+    ledger = result.get("ledger") if isinstance(result.get("ledger"), dict) else {}
+    budget.run_calls = int(nonneg(ledger.get("claude_calls")))
+    budget.run_usd = float(nonneg(ledger.get("est_usd")))
+    budget.calls_today += budget.run_calls
+    budget.usd_today += budget.run_usd
+    state["minutes"] = float(nonneg(ledger.get("minutes")))
+    tasks = ledger.get("tasks") if isinstance(ledger.get("tasks"), list) else []
+    budget.run_tasks += [r for r in map(clean_task_record, tasks) if r]
+    if is_text(ledger.get("stop_reason"), 500):
+        state["stop_reason"] = ledger["stop_reason"]
+    if result.get("error"):
+        errors.append(str(result["error"])[:500])
 
 
 def main() -> int:
@@ -1644,10 +1716,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--sandbox", action="store_true")
     ap.add_argument("--max-tasks", type=int, default=LIMITS["max_tasks_per_run"])
-    ap.add_argument("--phase", choices=("all", "plan", "work", "publish"), default="all")
+    ap.add_argument("--phase", choices=("all", "plan", "merge-gate", "work", "publish"), default="all")
     ap.add_argument("--state-dir", type=Path, default=WORK / "state", help="plan.json (plan writes; work reads; publish reads)")
     ap.add_argument("--result-dir", type=Path, help="publish: the work job's result.json and work.bundle (untrusted)")
-    ap.add_argument("--plan-sha256", help="work/publish: the plan job's output; plan.json must match it")
+    ap.add_argument("--plan-sha256", help="merge-gate/work/publish: the plan job's output; plan.json must match it")
+    ap.add_argument("--merge-gates", help="publish: the merge-gate job's output (JSON)")
     ARGS = ap.parse_args()
     PHASE = ARGS.phase
     WORK.mkdir(parents=True, exist_ok=True)
@@ -1655,10 +1728,10 @@ def main() -> int:
         if ARGS.sandbox:
             print("--sandbox runs only with --phase all", file=sys.stderr)
             return 2
-        if PHASE == "publish" and not ARGS.plan_sha256:
-            print("--phase publish needs --plan-sha256", file=sys.stderr)
+        if PHASE != "plan" and not ARGS.plan_sha256:
+            print(f"--phase {PHASE} needs --plan-sha256", file=sys.stderr)
             return 2
-        return {"plan": phase_plan, "work": phase_work, "publish": phase_publish}[PHASE]()
+        return {"plan": phase_plan, "merge-gate": phase_merge_gate, "work": phase_work, "publish": phase_publish}[PHASE]()
     stop_reason, budget = "ok", Budget()
     start_branch = git("rev-parse", "--abbrev-ref", "HEAD") if ARGS.sandbox else None
     if ARGS.sandbox:

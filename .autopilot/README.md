@@ -37,17 +37,18 @@ test ของ gate นี้: `python3 -m unittest discover -s .autopilot/tests
 
 ## แยก job ตาม token (2026-11-18)
 
-ปิดความเสี่ยงที่เหลือ "token อยู่ job เดียวกัน / uid เดียวกับโค้ดที่ model เขียน": workflow แบ่งเป็น 3 job และแต่ละ job ถือแค่ token ที่ต้องใช้
+ปิดความเสี่ยงที่เหลือ "token อยู่ job เดียวกัน / uid เดียวกับโค้ดที่ model เขียน": workflow แบ่งเป็น 4 job และแต่ละ job ถือแค่ token ที่ต้องใช้ ทุก job รัน engine จาก commit ของ workflow (`github.sha`) ส่วน tree ที่ทำงานคือ base ที่ plan อ่าน
 
 | job | token | ทำอะไร | รันโค้ดใน repo / ผลจาก model ไหม |
 |---|---|---|---|
-| `plan` | `GITHUB_TOKEN` แบบอ่านอย่างเดียว + `VERCEL_TOKEN` (เฉพาะ step นับโควตา) | อ่าน issue, PR, CI, ledger → ตัดสินว่า run นี้ทำอะไร (trusted authors, PR ที่อนุมัติ + `Autopilot-Head` + CI เขียว + โควตา Vercel) เขียน `plan.json` และส่ง sha256 ออกเป็น job output | ไม่ (ไม่มี `npm ci`) |
-| `work` | `CLAUDE_CODE_OAUTH_TOKEN` เท่านั้น (`contents: read` ไว้ checkout repo public) | maker, gate คำสั่ง, reviewer, visual gate, gate บน tree ที่ merge แล้วของ PR ที่อนุมัติ · การเขียน GitHub และ Telegram ทุกอย่างกลายเป็น *intent* ใน `result.json` · commit ที่ผ่าน gate ส่งต่อเป็น `work.bundle` (artifact) | ใช่ |
-| `publish` | `GITHUB_TOKEN` แบบเขียน + Telegram | ตรวจ `plan.json` กับ sha256 จาก job `plan` (job `work` ปลอม plan ไม่ได้) แล้วตรวจทุก intent: issue ต้องเป็นงานที่ plan ให้มา, push ได้แค่ branch `autopilot/<N>-…` ของงานนั้น, commit ต้องอยู่ใน bundle และต่อจาก base ที่ plan อ่าน, ห้าม kind อื่น (dispatch CI / แก้ PR / merge มาจาก plan เท่านั้น) · push commit ตามที่ gate ตรวจตรง ๆ เปิด PR (`Autopilot-Head` ใส่โดย publish) สั่ง `ci.yml` merge PR ที่อนุมัติ เขียน ledger | ไม่ (ไม่มี `npm ci`) |
+| `plan` | `GITHUB_TOKEN` แบบอ่านอย่างเดียว | อ่าน issue, PR, CI, ledger → เลือกงาน (ไม่เกิน `max_tasks` และเพดานรายวันที่เหลือ) กับ PR ที่อนุมัติซึ่งต้อง gate · เขียน `plan.json` ส่ง sha256 ออกเป็น job output | ไม่ (ไม่มี `npm ci`) |
+| `merge-gate` | ไม่มี secret (`contents: read`) | `npm test` บน main + gate คำสั่งบน tree ที่ merge แล้วของ PR ที่อนุมัติ (ทั้งแบบต่อจาก PR ก่อนหน้าและแบบเดี่ยว) · ผลส่งเป็น job output ซึ่ง job `work` เขียนทับไม่ได้ | โค้ดของ PR ที่คนอนุมัติแล้ว ไม่มี model |
+| `work` | `CLAUDE_CODE_OAUTH_TOKEN` เท่านั้น (`contents: read`) | maker, gate คำสั่ง, reviewer, visual gate · การเขียน GitHub และ Telegram ทุกอย่างกลายเป็น *intent* ใน `result.json` · commit ส่งต่อเป็น `work.bundle` (artifact) | ใช่ |
+| `publish` | `GITHUB_TOKEN` แบบเขียน + Telegram + `VERCEL_TOKEN` (เฉพาะ step นับโควตา) | ตรวจ `plan.json` กับ sha256 · **ตรวจการอนุมัติ, `Autopilot-Head`, CI และโควตา Vercel ใหม่บนสถานะล่าสุด** ก่อน merge · ตรวจทุก intent: issue ต้องเป็นงานที่ plan เลือก, push ได้ครั้งเดียวต่องานและเฉพาะ branch `autopilot/<N>-…` ของงานนั้น, commit ต้องมาจาก bundle ที่ verify ผ่าน และต่อจาก base, ห้าม kind อื่น · push งานค้างด้วย `--force-with-lease` เทียบ tip ที่ plan เห็น · เขียน ledger เสมอแม้บางขั้นล้ม | ไม่ (ไม่มี `npm ci`) |
 
-- merge PR ที่อนุมัติ: publish merge เองใน clone · ถ้า `main` ขยับแล้ว (tree หลัง merge ≠ tree ของ branch) ต้องมีผล gate จาก job `work` ที่ tree ตรงกันทุกตัวอักษร ไม่งั้นไม่ push (`merge_failed` ลองใหม่ run ถัดไป) · ถ้า `npm test` บน main ใน job `work` ไม่ผ่าน จะไม่ merge
+- merge PR ที่อนุมัติ: publish merge เองใน clone · ถ้า `main` ขยับแล้ว ต้องมีผลผ่านจาก job `merge-gate` ของ head เดียวกันและ tree ตรงกัน ไม่งั้นบันทึก `waiting_gate` (ไม่นับเป็นความล้มเหลว) แล้ว run ถัดไป gate ใหม่
 - intent ที่ถูกปฏิเสธ = run error (Telegram + ledger + workflow แดง)
-- ความเสี่ยงที่ยังเหลือ: job `work` ถือ Claude token อยู่ (model ต้องใช้) และตัวเลขค่าใช้จ่ายใน ledger มาจาก job นี้ (โค้ดใน repo อาจแก้ให้ต่ำกว่าจริงได้ ผลแค่เพดานรายวันหลวมขึ้น) · commit ใน PR อาจไม่ใช่ commit ที่ gate ตรวจจริงถ้า job `work` ถูกยึด แต่ยังต้องผ่าน CI บน PR และคนอนุมัติก่อน merge
+- ความเสี่ยงที่ยังเหลือ: job `work` ถือ Claude token (model ต้องใช้) และตัวเลขค่าใช้จ่ายใน ledger มาจาก job นี้ (โค้ดใน repo อาจแก้ให้ต่ำกว่าจริงได้ ผลแค่เพดานรายวันหลวมขึ้น) · commit ใน PR อาจไม่ใช่ commit ที่ gate ตรวจจริงถ้า job `work` ถูกยึด แต่ยังต้องผ่าน CI บน PR และคนอนุมัติก่อน merge
 - รันในเครื่องแบบเดิมได้: `--phase all` (ค่าเริ่มต้น) ใช้กับ `--sandbox` และ `--dry-run`
 - `local-merge` ใช้ไม่ได้ในโหมดแยก job (job `work` push `main` ไม่ได้ งานที่ผ่านจะเปิด PR เสมอ)
 

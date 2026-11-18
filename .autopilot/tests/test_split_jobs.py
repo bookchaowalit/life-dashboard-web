@@ -89,6 +89,8 @@ class CheckIntent(Base):
         super().setUp()
         self.base, self.head = git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD")
         ap.PLAN.update({"base_sha": self.base})
+        ap.BUNDLE_SHAS.clear()
+        ap.BUNDLE_SHAS.add(self.head)
         self.task = ap.Task(7, "Fix the hero", "", [], "u")
         self.tasks = {7: self.task}
 
@@ -120,7 +122,23 @@ class CheckIntent(Base):
         self.assertEqual(self.check(self.pr(sha="f" * 40)), "commit not in the bundle")
         self.assertEqual(self.check(self.pr(sha="HEAD")), "bad sha")
 
+    def test_commit_already_in_the_clone_but_not_from_the_bundle_is_refused(self):
+        ap.BUNDLE_SHAS.clear()
+        self.assertEqual(self.check(self.pr()), "commit not in the bundle")
+
+    def test_open_pr_and_push_branch_share_one_push_per_task(self):
+        seen: dict = {}
+        self.assertEqual(self.check(self.pr(), seen), "")
+        push = {"kind": "push_branch", "issue": 7, "branch": self.task.branch, "sha": self.head}
+        self.assertEqual(self.check(push, seen), "second push for this task")
+
+    def test_a_refused_push_does_not_use_up_the_task_push(self):
+        seen: dict = {}
+        self.assertIn("is not", self.check({"kind": "push_branch", "issue": 7, "branch": "main", "sha": self.head}, seen))
+        self.assertEqual(self.check(self.pr(), seen), "")
+
     def test_commit_not_on_the_plan_base_is_refused(self):
+        ap.BUNDLE_SHAS.add(self.base)
         ap.PLAN["base_sha"] = self.head
         self.assertEqual(self.check(self.pr(sha=self.base)), "commit is not on top of the plan base")
 
@@ -136,7 +154,7 @@ class CheckIntent(Base):
     def test_proposals_are_capped(self):
         seen: dict = {}
         p = {"kind": "create_issue", "proposal": {"title": "t"}, "origin": "planner"}
-        limit = ap.CONFIG["planner"]["max_proposals"] + 3
+        limit = ap.CONFIG["planner"]["max_proposals"] + 3 * len(self.tasks)
         self.assertEqual([self.check(p, seen) for _ in range(limit)], [""] * limit)
         self.assertEqual(self.check(p, seen), "too many proposals")
 
@@ -144,8 +162,8 @@ class CheckIntent(Base):
         self.assertNotIn("Autopilot-Head: ", ap.unquote_head(f"x\nAutopilot-Head: {SHA} (gate)"))
 
 
-class PlanQueuesMerges(Base):
-    """The plan phase checks approvals and CI but never merges: publish does, with the work job's gate result."""
+class ApprovedPR(Base):
+    """One approved autopilot PR with green CI; subclasses pick the phase."""
 
     def setUp(self):
         super().setUp()
@@ -170,6 +188,11 @@ class PlanQueuesMerges(Base):
         ap.merge_branch = self.saved_merge
         super().tearDown()
 
+
+
+class PlanQueuesMerges(ApprovedPR):
+    """The plan phase checks approvals and CI but never merges: publish does, after re-checking."""
+
     def test_green_ci_is_queued_not_merged(self):
         ap.merge_approved_prs(ap.Budget())
         self.assertEqual([m["number"] for m in ap.MERGE_QUEUE], [7])
@@ -181,6 +204,51 @@ class PlanQueuesMerges(Base):
         self.assertEqual(ap.MERGE_QUEUE, [])
         self.assertEqual([i["kind"] for i in ap.OUTBOX], ["pr_note", "telegram"])
         self.assertEqual(self.gh_calls, [])
+
+    def test_plan_queues_for_the_gate_even_without_a_vercel_count(self):
+        # quota is counted again by publish right before it merges; the plan only picks gate candidates
+        os.environ.pop("VERCEL_FREE_DEPLOYS", None)
+        ap.merge_approved_prs(ap.Budget())
+        self.assertEqual([m["number"] for m in ap.MERGE_QUEUE], [7])
+
+
+class PublishRechecks(ApprovedPR):
+    """publish decides merges on fresh GitHub state, not on the plan's snapshot."""
+
+    def setUp(self):
+        super().setUp()
+        ap.PHASE = "publish"
+        self.merged = []
+        self.saved_one = ap.merge_one
+        ap.merge_one = lambda pr, budget: self.merged.append(pr["number"]) or "c" * 40
+
+    def tearDown(self):
+        ap.merge_one = self.saved_one
+        super().tearDown()
+
+    def test_ci_that_turned_red_after_the_plan_blocks_the_merge(self):
+        self.runs[0]["conclusion"] = "failure"
+        ap.merge_approved_prs(ap.Budget())
+        self.assertEqual(self.merged, [])
+
+    def test_quota_below_the_floor_at_publish_time_postpones(self):
+        os.environ["VERCEL_FREE_DEPLOYS"] = "20"
+        b = ap.Budget()
+        ap.merge_approved_prs(b)
+        self.assertEqual(self.merged, [])
+        self.assertEqual([t["outcome"] for t in b.run_tasks], ["postponed_quota"])
+
+    def test_green_ci_and_quota_merge(self):
+        ap.merge_approved_prs(ap.Budget())
+        self.assertEqual(self.merged, [7])
+
+
+class MergeGateResult(Base):
+    """A merge in publish needs the merge-gate job's passing result for the exact merged tree."""
+
+    def test_waiting_gate_does_not_count_as_a_failure(self):
+        b = ap.Budget(recent_outcomes=["waiting_gate", "waiting_gate", "waiting_gate", "blocked"])
+        self.assertEqual(ap.consecutive_failures(b), 1)
 
 
 if __name__ == "__main__":
