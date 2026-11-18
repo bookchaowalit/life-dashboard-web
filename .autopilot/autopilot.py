@@ -382,6 +382,7 @@ class Budget:
     ledger_issue: int | None = None
     history_closed: bool = False
     paused: bool = False
+    work_ids: list[str] = field(default_factory=list)  # work runs already booked in the ledger
 
     def charge(self, usd: float) -> None:
         self.calls_today += 1
@@ -426,11 +427,12 @@ def load_budget() -> Budget:
         entry = last_json(c.get("body", ""))
         if not entry or entry.get("kind") != "autopilot-run":
             continue
-        run_id = str(entry.get("run_url") or "")
-        if run_id.startswith("http"):
-            if run_id in runs_seen:
-                continue  # a re-run of the publish job: count the run once (newest entry wins)
-            runs_seen.add(run_id)
+        work_id = str(entry.get("work_id") or "")
+        if work_id:
+            if work_id in runs_seen:
+                continue  # a re-run of the publish job wrote the same work run again: count it once
+            runs_seen.add(work_id)
+            b.work_ids.append(work_id)
         if entry.get("date") == today and not entry.get("sandbox"):
             b.calls_today += nonneg(entry.get("claude_calls"))
             b.usd_today += nonneg(entry.get("est_usd"))
@@ -454,9 +456,10 @@ def counts_as_task(t: dict) -> bool:
     return t.get("outcome") == "merged"
 
 
-def write_ledger(b: Budget, stop_reason: str, minutes: float | None = None) -> None:
-    entry = {"kind": "autopilot-run", "date": now_bkk().date().isoformat(), "at": now_bkk().isoformat(timespec="seconds"),
-             "run_url": run_url(), "sandbox": ARGS.sandbox, "claude_calls": b.run_calls,
+def write_ledger(b: Budget, stop_reason: str, minutes: float | None = None, date: str | None = None,
+                 work_id: str | None = None) -> None:
+    entry = {"kind": "autopilot-run", "date": date or now_bkk().date().isoformat(), "at": now_bkk().isoformat(timespec="seconds"),
+             "run_url": run_url(), **({"work_id": work_id} if work_id else {}), "sandbox": ARGS.sandbox, "claude_calls": b.run_calls,
              "est_usd": round(b.run_usd, 3), "minutes": round(minutes_used() if minutes is None else minutes, 1), "stop_reason": stop_reason,
              "tasks": b.run_tasks, "paused": b.paused}
     body = f"Run {entry['at']} — {stop_reason}\n\n```json\n{json.dumps(entry, ensure_ascii=False, indent=1)}\n```"
@@ -947,9 +950,9 @@ def merge_branch(branch: str, message: str) -> str:
         log(f"merge failed: {tail(out, 10)}")
         return ""
     merged_sha = git("rev-parse", "HEAD")
-    if PHASE == "publish" and MERGE_GATES.get("preflight_ok") is not True:
-        # no merge without npm test passing on main in the merge-gate job, even when the tree is the PR's
-        log(f"merge of {branch}: no passing merge-gate preflight (npm test on main) — waits for the next run")
+    if PHASE == "publish" and not (MERGE_GATES.get("preflight_ok") is True and MERGE_GATES.get("base_sha") == base_sha):
+        # no merge without npm test passing in the merge-gate job on this very main, even when the tree is the PR's
+        log(f"merge of {branch}: no passing merge-gate preflight on main {base_sha[:7]} — waits for the next run")
         _GATE_MISSING.append("preflight")
         git("reset", "--quiet", "--hard", "HEAD~1")
         return ""
@@ -1461,7 +1464,7 @@ def phase_merge_gate() -> int:
     approved PRs (code a person approved). The result leaves as a job output, which no other job can
     overwrite (artifacts can be, by the work job's runtime token)."""
     load_plan(ARGS.plan_sha256)
-    result: dict[str, Any] = {"preflight_ok": False, "gates": {}}
+    result: dict[str, Any] = {"preflight_ok": False, "base_sha": PLAN.get("base_sha", ""), "gates": {}}
     try:
         if PLAN.get("merge_gate"):
             preflight()
@@ -1469,6 +1472,8 @@ def phase_merge_gate() -> int:
             result["gates"] = gate_merges(PLAN.get("merges", []))
     except StopRun as e:
         log(f"merge gate stopped: {e.reason}")
+        if e.event == "paused" and not result["preflight_ok"]:
+            result["preflight_failed"] = e.reason[:500]  # main is broken: publish pauses the loop
     except Exception as e:
         log(f"merge gate error: {type(e).__name__}: {e}")
     write_output(merge_gates=json.dumps(result, separators=(",", ":")))
@@ -1526,6 +1531,8 @@ def phase_work() -> int:
         telegram("run_error", f"💥 run error: {esc(str(e))[:500]}\n{run_url()}")
     result["ledger"] = {"claude_calls": budget.run_calls, "est_usd": round(budget.run_usd, 3),
                         "minutes": round(minutes_used(), 1), "tasks": budget.run_tasks, "stop_reason": stop_reason}
+    result["work_id"] = work_id()
+    result["date"] = now_bkk().date().isoformat()  # the day the Claude calls happened
     if not ARGS.dry_run and PLAN.get("base_sha"):
         try:
             write_bundle(result)
@@ -1541,6 +1548,12 @@ def phase_work() -> int:
     return 0
 
 
+def work_id() -> str:
+    """One work run attempt: a re-run of the workflow calls Claude again and is booked again."""
+    return f"{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}-{PLAN.get('base_sha', '')[:12]}"
+
+
+ISSUE_KINDS = ("comment", "status", "push_branch", "open_pr")
 UNTRUSTED_KINDS = ("comment", "status", "telegram", "pause", "push_branch", "open_pr", "create_issue")
 MAX_INTENTS = 200
 
@@ -1594,7 +1607,8 @@ def check_intent(i: Any, tasks: dict[int, Task], seen: dict[str, int]) -> str:
                                   and all(is_text(r, 500) for r in i["reasons"])):
         return "bad PR text"
     if kind == "open_pr":
-        files = [f for f in git("diff", "--name-only", f"{PLAN['base_sha']}...{sha}").splitlines() if f]
+        # --no-renames lists both sides of a move; -z prints paths unquoted
+        files = [f for f in git("diff", "--no-renames", "--name-only", "-z", f"{PLAN['base_sha']}...{sha}").split("\0") if f]
         touched = [f for f in agent_config_touched(files) if f != tasks[issue].doc_path]
         if touched:
             return "changes agent/loop configuration: " + ", ".join(touched[:5])
@@ -1683,8 +1697,25 @@ def phase_publish() -> int:
             errors.append(f"{name}: {type(e).__name__}: {str(e)[:200]}")
 
     result = read_result(errors)
+    wid = result.get("work_id") if result and is_text(result.get("work_id"), 200) else None
+    if result and wid:
+        recorded: list[str] = []
+        step("ledger read", lambda: recorded.extend(load_budget().work_ids))
+        if wid in recorded:
+            # a re-run of publish: this work run is booked and its intents were applied (or failed) already
+            log(f"work run {wid} is already in the ledger — not replaying its intents or usage")
+            state["replay"] = True
+            result = None
     if result:
         step("usage", account_work, result, budget, state, errors)  # first, so the ledger has it whatever fails next
+    elif PLAN.get("work") and not state.get("replay"):
+        # work ran but left nothing readable: it may have called Claude, so book the day's caps
+        budget.run_calls, budget.run_usd = LIMITS["max_claude_calls_per_day"], float(LIMITS["max_est_usd_per_day"])
+        budget.calls_today += budget.run_calls
+        budget.usd_today += budget.run_usd
+    if MERGE_GATES.get("preflight_failed"):
+        step("pause", pause, f"main พังอยู่แล้ว (npm test fail ใน merge-gate):\n{str(MERGE_GATES['preflight_failed'])[:400]}")
+        errors.append("merge-gate: npm test on main failed")
     step("labels", ensure_labels)
     if budget.ledger_issue is None and writes_allowed():
         step("ledger issue", lambda: setattr(budget, "ledger_issue", create_ledger_issue()))
@@ -1701,8 +1732,8 @@ def phase_publish() -> int:
         seen: dict[str, int] = {}
         for n, i in enumerate(intents):
             why = "too many intents" if n >= MAX_INTENTS else check_intent(i, tasks, seen)
-            issue = i.get("issue") if isinstance(i, dict) else None
-            if not why and issue in tasks:
+            issue = i.get("issue") if isinstance(i, dict) and i.get("kind") in ISSUE_KINDS else None
+            if not why and type(issue) is int and issue in tasks:
                 if issue not in live:
                     live[issue] = still_approved(issue)
                 if not live[issue]:
@@ -1717,7 +1748,8 @@ def phase_publish() -> int:
         stop_reason = "; ".join(e for e in [stop_reason] + errors if e)[:900]
         step("notify", telegram, "run_error", f"💥 run error: {esc(stop_reason)[:500]}\n{run_url()}")
     if not ARGS.dry_run:
-        step("ledger", write_ledger, budget, stop_reason or "ok", state["minutes"])
+        if not state.get("replay"):
+            step("ledger", write_ledger, budget, stop_reason or "ok", state["minutes"], state.get("date"), wid)
     step("summary", run_summary, budget, stop_reason or "ok", state["minutes"])
     log(f"publish done: {stop_reason or 'ok'}")
     return 1 if errors else 0
@@ -1753,8 +1785,9 @@ def read_result(errors: list[str]) -> dict | None:
 def account_work(result: dict, budget: Budget, state: dict, errors: list[str]) -> None:
     ledger = result.get("ledger") if isinstance(result.get("ledger"), dict) else {}
     calls, usd = ledger.get("claude_calls"), ledger.get("est_usd")
+    # range first: comparisons never overflow (a huge JSON int) and nan/inf fail them
     sane = (type(calls) is int and 0 <= calls <= LIMITS["max_claude_calls_per_day"] * 2
-            and isinstance(usd, (int, float)) and not isinstance(usd, bool) and math.isfinite(usd) and 0 <= usd <= LIMITS["max_est_usd_per_day"] * 2)
+            and type(usd) in (int, float) and 0 <= usd <= LIMITS["max_est_usd_per_day"] * 2)
     if not sane:
         # unreadable usage: book the day's caps, so a broken or forged result cannot buy more calls
         errors.append(f"work usage unreadable (claude_calls={str(calls)[:40]}, est_usd={str(usd)[:40]})")
@@ -1763,7 +1796,10 @@ def account_work(result: dict, budget: Budget, state: dict, errors: list[str]) -
     budget.run_usd = float(usd)
     budget.calls_today += budget.run_calls
     budget.usd_today += budget.run_usd
-    state["minutes"] = float(nonneg(ledger.get("minutes")))
+    minutes = ledger.get("minutes")
+    state["minutes"] = float(minutes) if type(minutes) in (int, float) and 0 <= minutes <= 600 else 0.0
+    if is_text(result.get("date"), 10) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", result["date"]):
+        state["date"] = result["date"]
     tasks = ledger.get("tasks") if isinstance(ledger.get("tasks"), list) else []
     budget.run_tasks += [r for r in map(clean_task_record, tasks) if r]
     if is_text(ledger.get("stop_reason"), 500):

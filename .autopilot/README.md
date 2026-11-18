@@ -48,7 +48,9 @@ test ของ gate นี้: `python3 -m unittest discover -s .autopilot/tests
 
 - merge PR ที่อนุมัติ: publish merge เองใน clone และต้องมี `npm test` บน main ผ่านใน job `merge-gate` ทุกครั้ง · ถ้า `main` ขยับแล้ว ต้องมีผลผ่านของ head เดียวกันและ tree ตรงกัน · ไม่มีผล = `waiting_gate` (ไม่นับเป็นความล้มเหลว run ถัดไป gate ใหม่) · gate รันแล้วไม่ผ่าน = `merge_failed`
 - ก่อนใช้ intent แรกของแต่ละงาน publish อ่าน issue ล่าสุด: ต้องยังเปิดอยู่และมี `autopilot:todo`/`in-progress` (เจ้าของถอนงานระหว่าง run ได้) · `open_pr` ที่แตะไฟล์ agent/loop config ถูกปฏิเสธจาก diff (ไม่รันโค้ด)
-- ยอด Claude จาก job `work` ต้องเป็นตัวเลขที่สมเหตุผล ไม่งั้นบันทึกเต็มเพดานรายวัน · ledger นับหนึ่ง run ครั้งเดียว (re-run ของ publish ไม่นับซ้ำ)
+- ยอด Claude จาก job `work` ต้องเป็นตัวเลขที่สมเหตุผล ไม่งั้นบันทึกเต็มเพดานรายวัน · ถ้า `work` ควรรันแต่ไม่มีผลที่อ่านได้ (ล้ม, timeout, upload ไม่สำเร็จ) ก็บันทึกเต็มเพดานเช่นกัน (อาจเรียก Claude ไปแล้ว) ผลคือวันนั้นไม่เริ่มงานใหม่
+- ledger ผูกยอดกับ work run (`work_id` = run id + attempt) และวันที่ของ work · re-run เฉพาะ publish ไม่นับซ้ำและไม่ใช้ intent ซ้ำ · re-run ทั้ง workflow = work run ใหม่ นับใหม่
+- preflight ของ `merge-gate` ผูกกับ commit ของ main ที่ใช้ merge จริง · `npm test` บน main ไม่ผ่าน = publish สร้าง issue “Autopilot paused” · ตรวจ agent/loop config จาก diff แบบ `--no-renames -z` (เห็นทั้งต้นทางและปลายทางของไฟล์ที่ย้าย)
 - intent ที่ถูกปฏิเสธ = run error (Telegram + ledger + workflow แดง)
 - ความเสี่ยงที่ยังเหลือ: job `work` ถือ Claude token (model ต้องใช้) และตัวเลขค่าใช้จ่ายใน ledger มาจาก job นี้ (โค้ดใน repo อาจแก้ให้ต่ำกว่าจริงได้ ผลแค่เพดานรายวันหลวมขึ้น) · commit ใน PR อาจไม่ใช่ commit ที่ gate ตรวจจริงถ้า job `work` ถูกยึด แต่ยังต้องผ่าน CI บน PR และคนอนุมัติก่อน merge
 - รันในเครื่องแบบเดิมได้: `--phase all` (ค่าเริ่มต้น) ใช้กับ `--sandbox` และ `--dry-run`

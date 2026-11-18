@@ -269,6 +269,11 @@ class MergeGateResult(Base):
             self.assertEqual(b.run_calls, ap.LIMITS["max_claude_calls_per_day"], (calls, usd))
             self.assertTrue(errors)
 
+    def test_huge_json_int_usd_books_the_caps_without_crashing(self):
+        b, errors = ap.Budget(), []
+        ap.account_work({"ledger": {"claude_calls": 1, "est_usd": 10 ** 400}}, b, {"minutes": 0}, errors)
+        self.assertEqual(b.run_usd, float(ap.LIMITS["max_est_usd_per_day"]))
+
     def test_sane_usage_is_booked_as_reported(self):
         b, errors = ap.Budget(), []
         ap.account_work({"ledger": {"claude_calls": 3, "est_usd": 1.25, "minutes": 9}}, b, {"minutes": 0}, errors)
@@ -284,21 +289,24 @@ if __name__ == "__main__":
 
 
 class LedgerRerun(Base):
-    """A re-run of the publish job writes the same run again: the day counts it once."""
+    """A re-run of the publish job writes the same work run again: the day counts it once.
+    A re-run of the whole workflow is a new work run (new attempt) and counts again."""
 
-    def test_same_run_url_counts_once(self):
-        def entry(created, calls):
+    def test_same_work_run_counts_once_new_attempt_counts_again(self):
+        def entry(created, calls, wid="1-1-abc"):
             e = {"kind": "autopilot-run", "date": ap.now_bkk().date().isoformat(), "claude_calls": calls, "est_usd": 1,
-                 "run_url": "https://github.com/x/y/actions/runs/1", "tasks": []}
+                 "run_url": "https://github.com/x/y/actions/runs/1", "work_id": wid, "tasks": []}
             return {"created_at": created, "user": {"login": ap.CONFIG["backlog"]["ledger_author"]}, "body": "```json\n" + json.dumps(e) + "\n```"}
 
         def gh_json(*args):
             if args[0] == "issue":
                 return [{"number": 1, "title": ap.CONFIG["backlog"]["ledger_issue_title"], "author": {"login": "app/github-actions"}}]
-            return [entry("2026-11-18T01:00:00Z", 4), entry("2026-11-18T01:05:00Z", 4)]
+            return [entry("2026-11-18T01:00:00Z", 4), entry("2026-11-18T01:05:00Z", 4), entry("2026-11-18T02:00:00Z", 2, "1-2-abc")]
         ap.gh_json = gh_json
         ap.ARGS.dry_run = True
-        self.assertEqual(ap.load_budget().calls_today, 4)
+        b = ap.load_budget()
+        self.assertEqual(b.calls_today, 6)
+        self.assertEqual(sorted(b.work_ids), ["1-1-abc", "1-2-abc"])
 
 
 class PublishStillApproved(Base):
@@ -344,28 +352,42 @@ class PublishMergeBranch(Base):
         self.assertEqual(self.merge(), "")
         self.assertTrue(ap._GATE_MISSING)
 
+    def test_preflight_on_another_main_does_not_count(self):
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha="o" * 40, gates={})
+        self.assertEqual(self.merge(), "")
+        self.assertTrue(ap._GATE_MISSING)
+
     def test_same_tree_merges_after_preflight(self):
-        ap.MERGE_GATES.update(preflight_ok=True, gates={})
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha=self.MERGED, gates={})
         self.assertEqual(self.merge(), self.MERGED)
 
     def test_moved_main_without_a_result_waits(self):
         self.trees["merged"] = "T2"
-        ap.MERGE_GATES.update(preflight_ok=True, gates={})
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha=self.MERGED, gates={})
         self.assertEqual(self.merge(), "")
         self.assertTrue(ap._GATE_MISSING)
 
     def test_failed_gate_is_a_failure_not_a_wait(self):
         self.trees["merged"] = "T2"
-        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": [], "failed_trees": ["T2"]}})
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha=self.MERGED, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": [], "failed_trees": ["T2"]}})
         self.assertEqual(self.merge(), "")
         self.assertFalse(ap._GATE_MISSING)
 
     def test_passing_gate_for_another_head_does_not_count(self):
         self.trees["merged"] = "T2"
-        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": "z" * 40, "ok_trees": ["T2"]}})
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha=self.MERGED, gates={"autopilot/7-x": {"head": "z" * 40, "ok_trees": ["T2"]}})
         self.assertEqual(self.merge(), "")
 
     def test_passing_gate_for_this_tree_merges(self):
         self.trees["merged"] = "T2"
-        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": ["T2"]}})
+        ap.MERGE_GATES.update(preflight_ok=True, base_sha=self.MERGED, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": ["T2"]}})
         self.assertEqual(self.merge(), self.MERGED)
+
+
+class IntentKinds(Base):
+    def test_issue_field_on_other_kinds_is_ignored_safely(self):
+        # telegram with an odd extra "issue" must not crash publish before the ledger
+        i = {"kind": "telegram", "event": "task_blocked", "text": "x", "issue": [1, 2]}
+        self.assertEqual(ap.check_intent(i, {}, {}), "")
+        issue = i.get("issue") if i.get("kind") in ap.ISSUE_KINDS else None
+        self.assertIsNone(issue)
