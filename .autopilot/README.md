@@ -2,7 +2,7 @@
 title: "Autopilot loop — life-dashboard-web (W6)"
 status: active
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-11-18
 owner: bookchaowalit (approver) · Claude autopilot (maker) · Claude reviewer session แยก (checker)
 ---
 
@@ -34,6 +34,27 @@ run แบบ dispatch ไม่ผูกกับ PR (แท็บ Checks ข�
 test ของ gate นี้: `python3 -m unittest discover -s .autopilot/tests`
 
 ห้ามเปลี่ยน `merge.mode` กลับเป็น `local-merge` จนกว่าเจ้าของจะตัดสินใจใหม่
+
+## แยก job ตาม token (2026-11-18)
+
+ปิดความเสี่ยงที่เหลือ "token อยู่ job เดียวกัน / uid เดียวกับโค้ดที่ model เขียน": workflow แบ่งเป็น 4 job และแต่ละ job ถือแค่ token ที่ต้องใช้ ทุก job รัน engine จาก commit ของ workflow (`github.sha`) ส่วน tree ที่ทำงานคือ base ที่ plan อ่าน
+
+| job | token | ทำอะไร | รันโค้ดใน repo / ผลจาก model ไหม |
+|---|---|---|---|
+| `plan` | `GITHUB_TOKEN` แบบอ่านอย่างเดียว | อ่าน issue, PR, CI, ledger → เลือกงาน (ไม่เกิน `max_tasks` และเพดานรายวันที่เหลือ) กับ PR ที่อนุมัติซึ่งต้อง gate · เขียน `plan.json` ส่ง sha256 ออกเป็น job output | ไม่ (ไม่มี `npm ci`) |
+| `merge-gate` | ไม่มี secret (`contents: read`) | `npm test` บน main + gate คำสั่งบน tree ที่ merge แล้วของ PR ที่อนุมัติ (ทั้งแบบต่อจาก PR ก่อนหน้าและแบบเดี่ยว) · ผลส่งเป็น job output ซึ่ง job `work` เขียนทับไม่ได้ | โค้ดของ PR ที่คนอนุมัติแล้ว ไม่มี model |
+| `work` | `CLAUDE_CODE_OAUTH_TOKEN` เท่านั้น (`contents: read`) | maker, gate คำสั่ง, reviewer, visual gate · การเขียน GitHub และ Telegram ทุกอย่างกลายเป็น *intent* ใน `result.json` · commit ส่งต่อเป็น `work.bundle` (artifact) | ใช่ |
+| `publish` | `GITHUB_TOKEN` แบบเขียน + Telegram + `VERCEL_TOKEN` (เฉพาะ step นับโควตา) | ตรวจ `plan.json` กับ sha256 · **ตรวจการอนุมัติ, `Autopilot-Head`, CI และโควตา Vercel ใหม่บนสถานะล่าสุด** ก่อน merge · ตรวจทุก intent: issue ต้องเป็นงานที่ plan เลือก, push ได้ครั้งเดียวต่องานและเฉพาะ branch `autopilot/<N>-…` ของงานนั้น, commit ต้องมาจาก bundle ที่ verify ผ่าน และต่อจาก base, ห้าม kind อื่น · push งานค้างด้วย `--force-with-lease` เทียบ tip ที่ plan เห็น · เขียน ledger เสมอแม้บางขั้นล้ม | ไม่ (ไม่มี `npm ci`) |
+
+- merge PR ที่อนุมัติ: publish merge เองใน clone และต้องมี `npm test` บน main ผ่านใน job `merge-gate` ทุกครั้ง · ถ้า `main` ขยับแล้ว ต้องมีผลผ่านของ head เดียวกันและ tree ตรงกัน · ไม่มีผล = `waiting_gate` (ไม่นับเป็นความล้มเหลว run ถัดไป gate ใหม่) · gate รันแล้วไม่ผ่าน = `merge_failed`
+- ก่อนใช้ intent แรกของแต่ละงาน publish อ่าน issue ล่าสุด: ต้องยังเปิดอยู่และมี `autopilot:todo`/`in-progress` (เจ้าของถอนงานระหว่าง run ได้) · `open_pr` ที่แตะไฟล์ agent/loop config ถูกปฏิเสธจาก diff (ไม่รันโค้ด)
+- ยอด Claude จาก job `work` ต้องเป็นตัวเลขที่สมเหตุผล ไม่งั้นบันทึกเต็มเพดานรายวัน · ถ้า `work` ควรรันแต่ไม่มีผลที่อ่านได้ (ล้ม, timeout, upload ไม่สำเร็จ) ก็บันทึกเต็มเพดานเช่นกัน (อาจเรียก Claude ไปแล้ว) ผลคือวันนั้นไม่เริ่มงานใหม่
+- ledger ผูกยอดกับ work run (`work_id` = run id + attempt) และวันที่ของ work · re-run เฉพาะ publish ไม่นับซ้ำและไม่ใช้ intent ซ้ำ · re-run ทั้ง workflow = work run ใหม่ นับใหม่
+- preflight ของ `merge-gate` ผูกกับ commit ของ main ที่ใช้ merge จริง · `npm test` บน main ไม่ผ่าน = publish สร้าง issue “Autopilot paused” · ตรวจ agent/loop config จาก diff แบบ `--no-renames -z` (เห็นทั้งต้นทางและปลายทางของไฟล์ที่ย้าย)
+- intent ที่ถูกปฏิเสธ = run error (Telegram + ledger + workflow แดง)
+- ความเสี่ยงที่ยังเหลือ: job `work` ถือ Claude token (model ต้องใช้) และตัวเลขค่าใช้จ่ายใน ledger มาจาก job นี้ (โค้ดใน repo อาจแก้ให้ต่ำกว่าจริงได้ ผลแค่เพดานรายวันหลวมขึ้น) · commit ใน PR อาจไม่ใช่ commit ที่ gate ตรวจจริงถ้า job `work` ถูกยึด แต่ยังต้องผ่าน CI บน PR และคนอนุมัติก่อน merge
+- รันในเครื่องแบบเดิมได้: `--phase all` (ค่าเริ่มต้น) ใช้กับ `--sandbox` และ `--dry-run`
+- `local-merge` ใช้ไม่ได้ในโหมดแยก job (job `work` push `main` ไม่ได้ งานที่ผ่านจะเปิด PR เสมอ)
 
 ## ภาพรวม
 
