@@ -46,7 +46,9 @@ test ของ gate นี้: `python3 -m unittest discover -s .autopilot/tests
 | `work` | `CLAUDE_CODE_OAUTH_TOKEN` เท่านั้น (`contents: read`) | maker, gate คำสั่ง, reviewer, visual gate · การเขียน GitHub และ Telegram ทุกอย่างกลายเป็น *intent* ใน `result.json` · commit ส่งต่อเป็น `work.bundle` (artifact) | ใช่ |
 | `publish` | `GITHUB_TOKEN` แบบเขียน + Telegram + `VERCEL_TOKEN` (เฉพาะ step นับโควตา) | ตรวจ `plan.json` กับ sha256 · **ตรวจการอนุมัติ, `Autopilot-Head`, CI และโควตา Vercel ใหม่บนสถานะล่าสุด** ก่อน merge · ตรวจทุก intent: issue ต้องเป็นงานที่ plan เลือก, push ได้ครั้งเดียวต่องานและเฉพาะ branch `autopilot/<N>-…` ของงานนั้น, commit ต้องมาจาก bundle ที่ verify ผ่าน และต่อจาก base, ห้าม kind อื่น · push งานค้างด้วย `--force-with-lease` เทียบ tip ที่ plan เห็น · เขียน ledger เสมอแม้บางขั้นล้ม | ไม่ (ไม่มี `npm ci`) |
 
-- merge PR ที่อนุมัติ: publish merge เองใน clone · ถ้า `main` ขยับแล้ว ต้องมีผลผ่านจาก job `merge-gate` ของ head เดียวกันและ tree ตรงกัน ไม่งั้นบันทึก `waiting_gate` (ไม่นับเป็นความล้มเหลว) แล้ว run ถัดไป gate ใหม่
+- merge PR ที่อนุมัติ: publish merge เองใน clone และต้องมี `npm test` บน main ผ่านใน job `merge-gate` ทุกครั้ง · ถ้า `main` ขยับแล้ว ต้องมีผลผ่านของ head เดียวกันและ tree ตรงกัน · ไม่มีผล = `waiting_gate` (ไม่นับเป็นความล้มเหลว run ถัดไป gate ใหม่) · gate รันแล้วไม่ผ่าน = `merge_failed`
+- ก่อนใช้ intent แรกของแต่ละงาน publish อ่าน issue ล่าสุด: ต้องยังเปิดอยู่และมี `autopilot:todo`/`in-progress` (เจ้าของถอนงานระหว่าง run ได้) · `open_pr` ที่แตะไฟล์ agent/loop config ถูกปฏิเสธจาก diff (ไม่รันโค้ด)
+- ยอด Claude จาก job `work` ต้องเป็นตัวเลขที่สมเหตุผล ไม่งั้นบันทึกเต็มเพดานรายวัน · ledger นับหนึ่ง run ครั้งเดียว (re-run ของ publish ไม่นับซ้ำ)
 - intent ที่ถูกปฏิเสธ = run error (Telegram + ledger + workflow แดง)
 - ความเสี่ยงที่ยังเหลือ: job `work` ถือ Claude token (model ต้องใช้) และตัวเลขค่าใช้จ่ายใน ledger มาจาก job นี้ (โค้ดใน repo อาจแก้ให้ต่ำกว่าจริงได้ ผลแค่เพดานรายวันหลวมขึ้น) · commit ใน PR อาจไม่ใช่ commit ที่ gate ตรวจจริงถ้า job `work` ถูกยึด แต่ยังต้องผ่าน CI บน PR และคนอนุมัติก่อน merge
 - รันในเครื่องแบบเดิมได้: `--phase all` (ค่าเริ่มต้น) ใช้กับ `--sandbox` และ `--dry-run`

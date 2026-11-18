@@ -28,6 +28,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -398,7 +399,7 @@ class Budget:
 
 
 def nonneg(value: Any) -> float:
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else 0
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0 else 0
 
 
 def load_budget() -> Budget:
@@ -418,12 +419,18 @@ def load_budget() -> Budget:
     data = [c for page in pages for c in (page if isinstance(page, list) else [page])]
     data.sort(key=lambda c: c.get("created_at", ""), reverse=True)
     today = now_bkk().date().isoformat()
+    runs_seen: set[str] = set()
     for c in data:
         if (c.get("user") or {}).get("login") != CONFIG["backlog"]["ledger_author"]:
             continue  # somebody else's comment cannot lower the day's usage
         entry = last_json(c.get("body", ""))
         if not entry or entry.get("kind") != "autopilot-run":
             continue
+        run_id = str(entry.get("run_url") or "")
+        if run_id.startswith("http"):
+            if run_id in runs_seen:
+                continue  # a re-run of the publish job: count the run once (newest entry wins)
+            runs_seen.add(run_id)
         if entry.get("date") == today and not entry.get("sandbox"):
             b.calls_today += nonneg(entry.get("claude_calls"))
             b.usd_today += nonneg(entry.get("est_usd"))
@@ -552,10 +559,14 @@ def changed_lines() -> int:
 AGENT_CONFIG = (".claude/", "CLAUDE.md", "AGENTS.md", ".gitattributes", ".autopilot/", ".github/", ".mcp.json")
 
 
+def agent_config_touched(files: list[str]) -> list[str]:
+    return [f for f in files if f.startswith(AGENT_CONFIG)
+            or Path(f).name in ("CLAUDE.md", "AGENTS.md", ".gitattributes", ".mcp.json") or "/.claude/" in f"/{f}"]
+
+
 def command_gates() -> list[GateResult]:
     results = []
-    touched = [f for f in changed_files() if f.startswith(AGENT_CONFIG)
-               or Path(f).name in ("CLAUDE.md", "AGENTS.md", ".gitattributes", ".mcp.json") or "/.claude/" in f"/{f}"]
+    touched = agent_config_touched(changed_files())
     if touched:
         log(f"gate agent-config: FAIL ({', '.join(touched[:5])})")
         return [GateResult("agent-config", False, ", ".join(touched),
@@ -936,6 +947,12 @@ def merge_branch(branch: str, message: str) -> str:
         log(f"merge failed: {tail(out, 10)}")
         return ""
     merged_sha = git("rev-parse", "HEAD")
+    if PHASE == "publish" and MERGE_GATES.get("preflight_ok") is not True:
+        # no merge without npm test passing on main in the merge-gate job, even when the tree is the PR's
+        log(f"merge of {branch}: no passing merge-gate preflight (npm test on main) — waits for the next run")
+        _GATE_MISSING.append("preflight")
+        git("reset", "--quiet", "--hard", "HEAD~1")
+        return ""
     if git("rev-parse", f"{branch}^{{tree}}") != git("rev-parse", "HEAD^{tree}"):
         # main moved since the branch was cut: re-run the command gates on the merged tree. The
         # publish job runs no repo code, so it needs the work job's gate result for this exact tree.
@@ -943,9 +960,13 @@ def merge_branch(branch: str, message: str) -> str:
             # publish runs no repo code: it needs the merge-gate job's result (a job output the
             # maker's job cannot write) for this exact merged tree and approved head
             tree, att = git("rev-parse", "HEAD^{tree}"), (MERGE_GATES.get("gates") or {}).get(branch) or {}
-            if not (MERGE_GATES.get("preflight_ok") is True and att.get("head") == head_sha and tree in (att.get("ok_trees") or [])):
-                log(f"merge of {branch}: no passing merge-gate result for merged tree {tree[:7]} — waits for the next run")
-                _GATE_MISSING.append(tree)
+            same_head = att.get("head") == head_sha
+            if not (same_head and tree in (att.get("ok_trees") or [])):
+                if same_head and tree in (att.get("failed_trees") or []):
+                    log(f"merge of {branch}: command gates failed on merged tree {tree[:7]}")  # a real failure
+                else:
+                    log(f"merge of {branch}: no merge-gate result for merged tree {tree[:7]} — waits for the next run")
+                    _GATE_MISSING.append(tree)
                 git("reset", "--quiet", "--hard", "HEAD~1")
                 return ""
         elif not all(r.ok for r in command_gates()):
@@ -1241,7 +1262,7 @@ def plan(budget: Budget, ctx: dict | None = None) -> None:
 def preflight() -> None:
     if not ARGS.sandbox and not ARGS.dry_run and git("status", "--porcelain"):
         raise StopRun("working tree ไม่สะอาดก่อนเริ่ม run")
-    if not ARGS.dry_run and not shutil.which("claude"):
+    if not ARGS.dry_run and PHASE != "merge-gate" and not shutil.which("claude"):
         raise StopRun("ไม่พบ claude CLI")
     if writes_allowed():
         if PHASE not in ("work", "merge-gate"):
@@ -1410,10 +1431,13 @@ def gate_merges(merges: list[dict]) -> dict[str, dict]:
         if run(["git", "rev-parse", "--verify", "--quiet", "refs/autopilot/pr"])[1].strip() != head:
             log(f"merge gate {branch}: head moved — skipped")
             continue
-        branch_tree, ok_trees, next_cum = git("rev-parse", f"{head}^{{tree}}"), [], cum
+        branch_tree, ok_trees, failed_trees, next_cum = git("rev-parse", f"{head}^{{tree}}"), [], [], cum
         for start in dict.fromkeys([cum, base]):
             git("checkout", "--quiet", "--force", "--detach", start)
             git("clean", "-fdq", "-e", "node_modules")
+            shutil.rmtree(ROOT / ".next", ignore_errors=True)  # ignored build output (.next/types feeds typecheck)
+            for f in ROOT.glob("*.tsbuildinfo"):
+                f.unlink(missing_ok=True)
             code, _ = run(["git", "merge", "--no-ff", "-m", f"gate {branch}", head])
             if code != 0:
                 run(["git", "merge", "--abort"])
@@ -1423,7 +1447,9 @@ def gate_merges(merges: list[dict]) -> dict[str, dict]:
                 ok_trees.append(tree)
                 if start == cum:
                     next_cum = merged
-        gates[branch] = {"head": head, "ok_trees": ok_trees}
+            else:
+                failed_trees.append(tree)
+        gates[branch] = {"head": head, "ok_trees": ok_trees, "failed_trees": failed_trees}
         cum = next_cum
         log(f"merge gate {branch}: {len(ok_trees)} passing tree(s)")
     reset_to_base()
@@ -1501,7 +1527,14 @@ def phase_work() -> int:
     result["ledger"] = {"claude_calls": budget.run_calls, "est_usd": round(budget.run_usd, 3),
                         "minutes": round(minutes_used(), 1), "tasks": budget.run_tasks, "stop_reason": stop_reason}
     if not ARGS.dry_run and PLAN.get("base_sha"):
-        write_bundle(result)
+        try:
+            write_bundle(result)
+        except StopRun as e:  # e.g. git config changed by repo code: no bundle, but usage and the pause still go out
+            result["error"] = f"bundle: {e.reason}"
+            if e.event == "paused":
+                pause(e.reason)
+        except Exception as e:
+            result["error"] = f"bundle: {type(e).__name__}: {e}"
     ARGS.state_dir.mkdir(parents=True, exist_ok=True)
     (ARGS.state_dir / RESULT_FILE).write_text(json.dumps(result, ensure_ascii=False, indent=1))
     log(f"work done: {stop_reason} · intents {len(OUTBOX)}")
@@ -1560,6 +1593,11 @@ def check_intent(i: Any, tasks: dict[int, Task], seen: dict[str, int]) -> str:
     if kind == "open_pr" and not (is_text(i.get("evidence"), 30000) and isinstance(i.get("reasons"), list)
                                   and all(is_text(r, 500) for r in i["reasons"])):
         return "bad PR text"
+    if kind == "open_pr":
+        files = [f for f in git("diff", "--name-only", f"{PLAN['base_sha']}...{sha}").splitlines() if f]
+        touched = [f for f in agent_config_touched(files) if f != tasks[issue].doc_path]
+        if touched:
+            return "changes agent/loop configuration: " + ", ".join(touched[:5])
     seen[key] = 1  # only an accepted push takes the task's one push
     return ""
 
@@ -1646,7 +1684,7 @@ def phase_publish() -> int:
 
     result = read_result(errors)
     if result:
-        account_work(result, budget, state, errors)  # usage first, so the ledger has it whatever fails next
+        step("usage", account_work, result, budget, state, errors)  # first, so the ledger has it whatever fails next
     step("labels", ensure_labels)
     if budget.ledger_issue is None and writes_allowed():
         step("ledger issue", lambda: setattr(budget, "ledger_issue", create_ledger_issue()))
@@ -1659,9 +1697,16 @@ def phase_publish() -> int:
         step("bundle", import_bundle, errors)
         intents = result.get("intents") if isinstance(result.get("intents"), list) else []
         tasks = {t["number"]: Task(**t) for t in PLAN.get("ready", [])}
+        live: dict[int, bool] = {}
         seen: dict[str, int] = {}
         for n, i in enumerate(intents):
             why = "too many intents" if n >= MAX_INTENTS else check_intent(i, tasks, seen)
+            issue = i.get("issue") if isinstance(i, dict) else None
+            if not why and issue in tasks:
+                if issue not in live:
+                    live[issue] = still_approved(issue)
+                if not live[issue]:
+                    why = f"#{issue} is no longer open with {LABELS['todo']}/{LABELS['in_progress']}"
             if why:
                 log(f"intent refused ({why}): {str(i)[:200]}")
                 errors.append(f"refused work intent: {why}")
@@ -1676,6 +1721,17 @@ def phase_publish() -> int:
     step("summary", run_summary, budget, stop_reason or "ok", state["minutes"])
     log(f"publish done: {stop_reason or 'ok'}")
     return 1 if errors else 0
+
+
+def still_approved(number: int) -> bool:
+    """The owner can withdraw a task while the work job runs (close it, or take autopilot:todo off)."""
+    try:
+        data = gh_json("issue", "view", str(number), "--repo", REPO, "--json", "state,labels") or {}
+    except Exception as e:
+        log(f"#{number}: could not read the issue ({type(e).__name__}) — not publishing for it")
+        return False
+    labels = {x.get("name") for x in data.get("labels", [])}
+    return data.get("state") == "OPEN" and CONFIG["backlog"]["label"] in labels and bool(labels & {LABELS["todo"], LABELS["in_progress"]})
 
 
 def read_result(errors: list[str]) -> dict | None:
@@ -1696,8 +1752,15 @@ def read_result(errors: list[str]) -> dict | None:
 
 def account_work(result: dict, budget: Budget, state: dict, errors: list[str]) -> None:
     ledger = result.get("ledger") if isinstance(result.get("ledger"), dict) else {}
-    budget.run_calls = int(nonneg(ledger.get("claude_calls")))
-    budget.run_usd = float(nonneg(ledger.get("est_usd")))
+    calls, usd = ledger.get("claude_calls"), ledger.get("est_usd")
+    sane = (type(calls) is int and 0 <= calls <= LIMITS["max_claude_calls_per_day"] * 2
+            and isinstance(usd, (int, float)) and not isinstance(usd, bool) and math.isfinite(usd) and 0 <= usd <= LIMITS["max_est_usd_per_day"] * 2)
+    if not sane:
+        # unreadable usage: book the day's caps, so a broken or forged result cannot buy more calls
+        errors.append(f"work usage unreadable (claude_calls={str(calls)[:40]}, est_usd={str(usd)[:40]})")
+        calls, usd = LIMITS["max_claude_calls_per_day"], LIMITS["max_est_usd_per_day"]
+    budget.run_calls = int(calls)
+    budget.run_usd = float(usd)
     budget.calls_today += budget.run_calls
     budget.usd_today += budget.run_usd
     state["minutes"] = float(nonneg(ledger.get("minutes")))

@@ -91,6 +91,8 @@ class CheckIntent(Base):
         ap.PLAN.update({"base_sha": self.base})
         ap.BUNDLE_SHAS.clear()
         ap.BUNDLE_SHAS.add(self.head)
+        self.saved_touched = ap.agent_config_touched
+        ap.agent_config_touched = lambda files: []  # the fixture commit (this repo's HEAD) may touch .autopilot/
         self.task = ap.Task(7, "Fix the hero", "", [], "u")
         self.tasks = {7: self.task}
 
@@ -101,6 +103,14 @@ class CheckIntent(Base):
         i = {"kind": "open_pr", "issue": 7, "branch": self.task.branch, "sha": self.head, "evidence": "e", "reasons": ["r"]}
         i.update(over)
         return i
+
+    def tearDown(self):
+        ap.agent_config_touched = self.saved_touched
+        super().tearDown()
+
+    def test_open_pr_that_changes_loop_configuration_is_refused(self):
+        ap.agent_config_touched = lambda files: [".autopilot/config.json"]
+        self.assertIn("agent/loop configuration", self.check(self.pr()))
 
     def test_valid_open_pr_passes(self):
         self.assertEqual(self.check(self.pr()), "")
@@ -246,6 +256,24 @@ class PublishRechecks(ApprovedPR):
 class MergeGateResult(Base):
     """A merge in publish needs the merge-gate job's passing result for the exact merged tree."""
 
+    def test_agent_config_rule(self):
+        self.assertEqual(self.saved_touched_fn([".autopilot/config.json", "src/a.ts", "x/.claude/s.json", "CLAUDE.md"]),
+                         [".autopilot/config.json", "x/.claude/s.json", "CLAUDE.md"])
+
+    saved_touched_fn = staticmethod(ap.agent_config_touched)
+
+    def test_usage_that_is_not_a_sane_number_books_the_day_caps(self):
+        for calls, usd in ((float("inf"), 1.0), (2, float("nan")), ("3", 1.0), (10 ** 9, 1.0), (True, 0.5)):
+            b, errors = ap.Budget(), []
+            ap.account_work({"ledger": {"claude_calls": calls, "est_usd": usd}}, b, {"minutes": 0}, errors)
+            self.assertEqual(b.run_calls, ap.LIMITS["max_claude_calls_per_day"], (calls, usd))
+            self.assertTrue(errors)
+
+    def test_sane_usage_is_booked_as_reported(self):
+        b, errors = ap.Budget(), []
+        ap.account_work({"ledger": {"claude_calls": 3, "est_usd": 1.25, "minutes": 9}}, b, {"minutes": 0}, errors)
+        self.assertEqual((b.run_calls, b.run_usd, errors), (3, 1.25, []))
+
     def test_waiting_gate_does_not_count_as_a_failure(self):
         b = ap.Budget(recent_outcomes=["waiting_gate", "waiting_gate", "waiting_gate", "blocked"])
         self.assertEqual(ap.consecutive_failures(b), 1)
@@ -253,3 +281,91 @@ class MergeGateResult(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LedgerRerun(Base):
+    """A re-run of the publish job writes the same run again: the day counts it once."""
+
+    def test_same_run_url_counts_once(self):
+        def entry(created, calls):
+            e = {"kind": "autopilot-run", "date": ap.now_bkk().date().isoformat(), "claude_calls": calls, "est_usd": 1,
+                 "run_url": "https://github.com/x/y/actions/runs/1", "tasks": []}
+            return {"created_at": created, "user": {"login": ap.CONFIG["backlog"]["ledger_author"]}, "body": "```json\n" + json.dumps(e) + "\n```"}
+
+        def gh_json(*args):
+            if args[0] == "issue":
+                return [{"number": 1, "title": ap.CONFIG["backlog"]["ledger_issue_title"], "author": {"login": "app/github-actions"}}]
+            return [entry("2026-11-18T01:00:00Z", 4), entry("2026-11-18T01:05:00Z", 4)]
+        ap.gh_json = gh_json
+        ap.ARGS.dry_run = True
+        self.assertEqual(ap.load_budget().calls_today, 4)
+
+
+class PublishStillApproved(Base):
+    def test_closed_or_unlabelled_issue_is_not_published(self):
+        rows = {1: {"state": "OPEN", "labels": [{"name": "autopilot"}, {"name": ap.LABELS["todo"]}]},
+                2: {"state": "CLOSED", "labels": [{"name": "autopilot"}, {"name": ap.LABELS["todo"]}]},
+                3: {"state": "OPEN", "labels": [{"name": "autopilot"}]}}
+        ap.gh_json = lambda *a: rows[int(a[2])]
+        self.assertEqual([ap.still_approved(n) for n in (1, 2, 3)], [True, False, False])
+
+
+class PublishMergeBranch(Base):
+    """merge_branch in publish: preflight must pass; a merged tree needs a passing merge-gate result."""
+
+    HEAD, MERGED = "h" * 40, "m" * 40
+
+    def setUp(self):
+        super().setUp()
+        ap.PHASE = "publish"
+        ap.ARGS.dry_run = True  # no fetch/pull/push: only the decision
+        ap.MERGE_GATES.clear()
+        ap._GATE_MISSING.clear()
+        self.trees = {"branch": "T1", "merged": "T1"}
+        self.saved_git, self.saved_run = ap.git, ap.run
+
+        def git(*a, **k):
+            if a[0] != "rev-parse":
+                return ""
+            return {"HEAD": self.MERGED, "autopilot/7-x": self.HEAD, "autopilot/7-x^{tree}": self.trees["branch"],
+                    "HEAD^{tree}": self.trees["merged"]}.get(a[1], "")
+        ap.git = git
+        ap.run = lambda *a, **k: (0, "")
+
+    def tearDown(self):
+        ap.git, ap.run = self.saved_git, self.saved_run
+        ap.MERGE_GATES.clear()
+        super().tearDown()
+
+    def merge(self):
+        return ap.merge_branch("autopilot/7-x", "msg")
+
+    def test_no_preflight_result_blocks_even_a_same_tree_merge(self):
+        self.assertEqual(self.merge(), "")
+        self.assertTrue(ap._GATE_MISSING)
+
+    def test_same_tree_merges_after_preflight(self):
+        ap.MERGE_GATES.update(preflight_ok=True, gates={})
+        self.assertEqual(self.merge(), self.MERGED)
+
+    def test_moved_main_without_a_result_waits(self):
+        self.trees["merged"] = "T2"
+        ap.MERGE_GATES.update(preflight_ok=True, gates={})
+        self.assertEqual(self.merge(), "")
+        self.assertTrue(ap._GATE_MISSING)
+
+    def test_failed_gate_is_a_failure_not_a_wait(self):
+        self.trees["merged"] = "T2"
+        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": [], "failed_trees": ["T2"]}})
+        self.assertEqual(self.merge(), "")
+        self.assertFalse(ap._GATE_MISSING)
+
+    def test_passing_gate_for_another_head_does_not_count(self):
+        self.trees["merged"] = "T2"
+        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": "z" * 40, "ok_trees": ["T2"]}})
+        self.assertEqual(self.merge(), "")
+
+    def test_passing_gate_for_this_tree_merges(self):
+        self.trees["merged"] = "T2"
+        ap.MERGE_GATES.update(preflight_ok=True, gates={"autopilot/7-x": {"head": self.HEAD, "ok_trees": ["T2"]}})
+        self.assertEqual(self.merge(), self.MERGED)
