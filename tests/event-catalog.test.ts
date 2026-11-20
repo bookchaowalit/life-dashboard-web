@@ -98,7 +98,7 @@ describe('dashboard spec', () => {
 });
 
 describe('outcome review file', () => {
-  it('OR-301, pending with a due date, decisions table with a placeholder row, not a template', () => {
+  it('OR-301, pending with a due date, decisions table with at least one row, not a template', () => {
     const review = read('docs/measurement/OUTCOME-REVIEW-001.md');
     const front = review.slice(0, review.indexOf('\n---', 3));
     expect(front).not.toMatch(/status:\s*template/);
@@ -107,6 +107,7 @@ describe('outcome review file', () => {
     expect(review).toMatch(/\| Status \| pending\b[^|]*\|/);
     expect(review).toMatch(/\| Due \| \d{4}-\d{2}-\d{2}\b/);
     expect(review).toContain('| # | Decision | Type | Owner | Due | Tracked in |');
-    expect(review).toMatch(/\| 1 \| \[[^\]]+\] \|/);
+    // Row 1 is a placeholder before the review and a proposal while the owner decides.
+    expect(review).toMatch(/\| 1 \| \[[^\]]+\][^|]*\|/);
   });
 });

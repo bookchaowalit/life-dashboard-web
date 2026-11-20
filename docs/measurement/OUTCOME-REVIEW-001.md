@@ -25,7 +25,7 @@ dashboard uses OR-301…OR-399.
 | Release(s) covered | Production redeploy of `bb02d18` with analytics on (dpl_2i9SRQRqZqNqAgHFpJMqtsxedEjY, 2026-10-26) |
 | Review period | 2026-10-26 – 2026-11-25 |
 | Review type | T+30 |
-| Status | review-ready (data filled 2026-11-20 from PostHog; owner decision pending, due 2026-11-25) |
+| Status | pending owner decision (data filled 2026-11-20 from PostHog; due 2026-11-25) |
 | Owner | Owner (bookchaowalit) |
 | AI maker | Claude Code (session w4c-loop-pilot) prepared the empty review |
 | AI reviewer | Fresh read-only Claude reviewer at review time |
@@ -84,9 +84,9 @@ change. One action per row; write the task key or issue into "Tracked in".
 
 | # | Decision | Type | Owner | Due | Tracked in |
 |---|---|---|---|---|---|
-| 1 | (proposed) Accept analytics consent on each device the owner uses, then confirm one `$pageview` per device in PostHog | backlog item | Owner | 2026-11-27 | outcome-review/OR-301#1 |
-| 2 | (proposed) Run the habits-cell and tasks-API cross-checks for the same weeks to see whether the dashboard is used at all | discovery question | Claude | 2026-11-27 | outcome-review/OR-301#2 |
-| 3 | (proposed) Keep the KPIs; take the baseline at OR-302 (T+60, 2026-12-25) | KPI definition change | Owner | 2026-11-25 | outcome-review/OR-301#3 |
+| 1 | [proposed] Accept analytics consent on each device the owner uses, then confirm one `$pageview` per device in PostHog | backlog item | Owner | 2026-11-27 | outcome-review/OR-301#1 |
+| 2 | [proposed] Run the habits-cell and tasks-API cross-checks for the same weeks to see whether the dashboard is used at all | discovery question | Claude | 2026-11-27 | outcome-review/OR-301#2 |
+| 3 | [proposed] Keep the KPIs; take the baseline at OR-302 (T+60, 2026-12-25) | KPI definition change | Owner | 2026-11-25 | outcome-review/OR-301#3 |
 
 Continuous discovery: open questions from this review go here.
 
