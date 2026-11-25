@@ -2,7 +2,7 @@
 title: Life Dashboard — Outcome Review 001 (T+30)
 status: draft
 created: 2026-10-23
-updated: 2026-11-20
+updated: 2026-11-25
 description: First outcome review of the life-dashboard KPI pilot, prepared before go-live. Due 30 days after the first production event; status stays "pending" until then (go-live 2026-10-26). Read by empire-backlog-sync once its status is "decided".
 ---
 
@@ -21,11 +21,11 @@ dashboard uses OR-301…OR-399.
 |---|---|
 | Review ID | OR-301 |
 | Project / product ID | Life Dashboard (`book-products/life-dashboard-web`, Vercel `owner-web`) |
-| Version | 0.2 |
+| Version | 0.3 |
 | Release(s) covered | Production redeploy of `bb02d18` with analytics on (dpl_2i9SRQRqZqNqAgHFpJMqtsxedEjY, 2026-10-26) |
 | Review period | 2026-10-26 – 2026-11-25 |
 | Review type | T+30 |
-| Status | pending owner decision (data filled 2026-11-20 from PostHog; due 2026-11-25) |
+| Status | pending owner decision (data refreshed 2026-11-25 for the full period; due 2026-11-25) |
 | Owner | Owner (bookchaowalit) |
 | AI maker | Claude Code (session w4c-loop-pilot) prepared the empty review |
 | AI reviewer | Fresh read-only Claude reviewer at review time |
@@ -37,11 +37,11 @@ dashboard uses OR-301…OR-399.
 
 ## Summary
 
-Data snapshot: PostHog project 318524 (EU), HogQL over `events` from 2026-10-20 to 2026-11-20 03:30 UTC; live bundles checked the same day.
+Data snapshot: PostHog project 318524 (EU), HogQL over `events` from 2026-10-20 to 2026-11-25 17:00 UTC (full period); live bundles checked 2026-11-20.
 
 | Objective | Outcome KPI | Verdict | One-line reason |
 |---|---|---|---|
-| OBJ-01 | KPI-O-01 (north star) | not measurable | 1 PostHog event in 30 days (go-live test pageview 2026-10-25), none since |
+| OBJ-01 | KPI-O-01 (north star) | not measurable | 1 PostHog event in 30 days (go-live test pageview 2026-10-25); cells show no manual habit or task writes either |
 
 Overall decision (proposed, owner to confirm): **not measurable → fix the data path first** — the
 only user is the owner, so the first step is to accept consent on the owner's own devices, then
@@ -54,8 +54,8 @@ take the baseline at OR-302 (T+60, 2026-12-25).
 |---|---|---|---|---|---|---|---|---|
 | KPI-O-01 | outcome (north star) | not yet measured | ≥ 5 days / week, go-live + 60 days (provisional) | — | 0 days every week | — | not measurable | No complete week has ≥ 1 event |
 | KPI-L-01 | leading | not yet measured | ≥ 6 days / week, go-live + 60 days (provisional) | — | 0 days every week | — | not measurable | |
-| KPI-L-02 | leading | not yet measured | ≥ 5 days / week, go-live + 60 days (provisional) | — | 0 `habit_logged` | — | not measurable | Habits cell cross-check not run in this pass |
-| KPI-L-03 | leading | not yet measured | ≥ 10 / week, go-live + 60 days (provisional) | — | 0 `task_status_changed` | — | not measurable | Tasks API cross-check not run in this pass |
+| KPI-L-02 | leading | not yet measured | ≥ 5 days / week, go-live + 60 days (provisional) | — | 0 `habit_logged` | — | not measurable | Habits cell 2026-11-25: 0 habit logs in the period (none at all) |
+| KPI-L-03 | leading | not yet measured | ≥ 10 / week, go-live + 60 days (provisional) | — | 0 `task_status_changed` | — | not measurable | Tasks API 2026-11-25: 3 tasks done in the period, all from automations (0 manual) |
 | KPI-L-04 | leading | not yet measured | ≥ 4 modules / week, go-live + 60 days (provisional) | — | 0 modules | — | not measurable | |
 | KPI-G-01 | guardrail | not yet measured | ≤ 2% | — | 0 writes | — | not measurable | Below 10 writes per week |
 
@@ -85,12 +85,12 @@ change. One action per row; write the task key or issue into "Tracked in".
 | # | Decision | Type | Owner | Due | Tracked in |
 |---|---|---|---|---|---|
 | 1 | [proposed] Accept analytics consent on each device the owner uses, then confirm one `$pageview` per device in PostHog | backlog item | Owner | 2026-11-27 | outcome-review/OR-301#1 |
-| 2 | [proposed] Run the habits-cell and tasks-API cross-checks for the same weeks to see whether the dashboard is used at all | discovery question | Claude | 2026-11-27 | outcome-review/OR-301#2 |
+| 2 | [done 2026-11-25] Cross-check run: 0 habit logs, 0 manual task completions in the period → the dashboard's write modules are not used | discovery question | Claude | 2026-11-25 | outcome-review/OR-301#2 |
 | 3 | [proposed] Keep the KPIs; take the baseline at OR-302 (T+60, 2026-12-25) | KPI definition change | Owner | 2026-11-25 | outcome-review/OR-301#3 |
 
 Continuous discovery: open questions from this review go here.
 
-- Is the dashboard used and simply not measured (consent), or not used? → decision #2
+- Is the dashboard used and simply not measured (consent), or not used? → answered 2026-11-25: write modules not used (decision #2); read-only use is still unknown
 - Should a single-user owner tool record events without the consent step (owner-only, documented)? → owner
 ## Approval and sign-off
 
