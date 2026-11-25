@@ -1,8 +1,8 @@
 ---
 title: Life Dashboard — Outcome Review 001 (T+30)
-status: draft
+status: decided
 created: 2026-10-23
-updated: 2026-11-25
+updated: 2026-11-26
 description: First outcome review of the life-dashboard KPI pilot, prepared before go-live. Due 30 days after the first production event; status stays "pending" until then (go-live 2026-10-26). Read by empire-backlog-sync once its status is "decided".
 ---
 
@@ -21,11 +21,11 @@ dashboard uses OR-301…OR-399.
 |---|---|
 | Review ID | OR-301 |
 | Project / product ID | Life Dashboard (`book-products/life-dashboard-web`, Vercel `owner-web`) |
-| Version | 0.3 |
+| Version | 1.0 |
 | Release(s) covered | Production redeploy of `bb02d18` with analytics on (dpl_2i9SRQRqZqNqAgHFpJMqtsxedEjY, 2026-10-26) |
 | Review period | 2026-10-26 – 2026-11-25 |
 | Review type | T+30 |
-| Status | pending owner decision (data refreshed 2026-11-25 for the full period; due 2026-11-25) |
+| Status | decided 2026-11-26 (owner accepted all proposed decisions) |
 | Owner | Owner (bookchaowalit) |
 | AI maker | Claude Code (session w4c-loop-pilot) prepared the empty review |
 | AI reviewer | Fresh read-only Claude reviewer at review time |
@@ -43,7 +43,7 @@ Data snapshot: PostHog project 318524 (EU), HogQL over `events` from 2026-10-20 
 |---|---|---|---|
 | OBJ-01 | KPI-O-01 (north star) | not measurable | 1 PostHog event in 30 days (go-live test pageview 2026-10-25); cells show no manual habit or task writes either |
 
-Overall decision (proposed, owner to confirm): **not measurable → fix the data path first** — the
+Overall decision (owner accepted 2026-11-26): **not measurable → fix the data path first** — the
 only user is the owner, so the first step is to accept consent on the owner's own devices, then
 take the baseline at OR-302 (T+60, 2026-12-25).
 
@@ -84,9 +84,9 @@ change. One action per row; write the task key or issue into "Tracked in".
 
 | # | Decision | Type | Owner | Due | Tracked in |
 |---|---|---|---|---|---|
-| 1 | [proposed] Accept analytics consent on each device the owner uses, then confirm one `$pageview` per device in PostHog | backlog item | Owner | 2026-11-27 | outcome-review/OR-301#1 |
+| 1 | Accept analytics consent on each device the owner uses, then confirm one `$pageview` per device in PostHog | backlog item | Owner | 2026-11-27 | outcome-review/OR-301#1 |
 | 2 | [done 2026-11-25] Cross-check run: 0 habit logs, 0 manual task completions in the period → the dashboard's write modules are not used | discovery question | Claude | 2026-11-25 | outcome-review/OR-301#2 |
-| 3 | [proposed] Keep the KPIs; take the baseline at OR-302 (T+60, 2026-12-25) | KPI definition change | Owner | 2026-11-25 | outcome-review/OR-301#3 |
+| 3 | Keep the KPIs; take the baseline at OR-302 (T+60, 2026-12-25) | KPI definition change | Owner | 2026-11-25 | outcome-review/OR-301#3 |
 
 Continuous discovery: open questions from this review go here.
 
@@ -96,5 +96,5 @@ Continuous discovery: open questions from this review go here.
 
 | Decision | Approver | Date | Evidence |
 |---|---|---|---|
-| accept review and decisions | Owner | — | — |
-| next review scheduled (OR-302, T+60) | Owner | — | task `outcome-review/life-dashboard/<date>` |
+| accept review and decisions | Owner | 2026-11-26 | owner reply in the Claude Code session, 2026-11-26 ("ตามข้อเสนอ") |
+| next review scheduled (OR-302, T+60) | Owner | 2026-11-26 | due 2026-12-25, task `outcome-review/life-dashboard/2026-12-25` |
