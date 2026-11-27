@@ -14,16 +14,17 @@ flowchart TD
   CB -->|denied| LOGINPAGE["redirect /login?error=denied"]
   CB -->|ok| SESSION["JWE session cookie, max 1 h"]
   SESSION --> GUARD{"Host/Origin guard and requirePageOwner"}
-  GUARD -->|no session| LOGINPAGE
+  GUARD -->|"no session, page request"| LOGINPAGE2["redirect /login"]
+  GUARD -->|"no session, BFF or owner-write API"| API401["401 authentication_required JSON"]
   GUARD -->|ok| ROUTE{"request type"}
-  ROUTE -->|"owner pages: tasks, goals, habits, decisions, revenue, finance"| LOADERS["server loaders lib/cells/*, one token EMPIRE_CELL_TOKEN or ledger token"]
-  ROUTE -->|"GET /api/service/path for other modules"| PROXY["BFF proxy: allow-list of routes, https origins only"]
+  ROUTE -->|"owner pages: tasks (/today redirects here), goals, habits, decisions, revenue, finance"| LOADERS["server loaders lib/cells/*, one token EMPIRE_CELL_TOKEN or ledger token"]
+  ROUTE -->|"/api/service/path for other modules"| PROXY["BFF proxy: per-service allow-list of methods and routes (production hub also POST); hosted: https origins only, local demo also loopback http"]
   ROUTE -->|"POST /api/owner/tasks/status or habits/log"| WRITE["idempotent write to Tasks or Habits cell"]
   LOADERS --> CELLS["Tasks, goals, habits, decisions, ledger, finance cells"]
   WRITE --> CELLS
   PROXY --> SVCJWT["mint RS256 service JWT per request, 120 s, audience per service"]
   SVCJWT --> META["accounts, integrations, saas, knowledge, ai-usage APIs"]
-  PROXY -.->|"today, cloud, production hub on hosted"| UNAVAIL["503 service_auth_unavailable"]
+  PROXY -.->|"cloud, production hub, retired today API on hosted"| UNAVAIL["503 service_auth_unavailable"]
   CELLS -->|"error or env missing"| STATE["page shows short unavailable state"]
   CELLS --> PAGE["Rendered page"]
   META --> PAGE
@@ -50,12 +51,12 @@ flowchart TD
   WRITE --> CELLS
   PROXY --> SVCJWT["service JWT RS256"]
   SVCJWT --> META["metadata APIs and ai-usage API"]
-  SVCJWT --> SCOPED["today, cloud, production hub with scoped owner auth"]
+  SVCJWT --> SCOPED["cloud, production hub with scoped owner auth"]
   CELLS --> PAGE["Rendered page"]
   META --> PAGE
   SCOPED --> PAGE
   PAGE --> EVENTS["consented analytics events to PostHog"]
-  EVENTS --> REVIEW["KPI baseline and outcome review OR-301"]
+  EVENTS --> REVIEW["confirm consent and one pageview per owner device, KPI baseline and next outcome review OR-302 (OR-301 done 2026-11-26)"]
 ```
 
 Sources: `DOCPACK/08-rtm.md` §Gaps (GAP-01, GAP-02, GAP-03, GAP-05, GAP-06), `DOCPACK/02-architecture.md` §Context diagram, `docs/measurement/GO-LIVE.md` steps 5-8
@@ -64,12 +65,12 @@ Sources: `DOCPACK/08-rtm.md` §Gaps (GAP-01, GAP-02, GAP-03, GAP-05, GAP-06), `D
 
 | ID | As-Is → To-Be | Status | Owner | Evidence |
 |---|---|---|---|---|
-| G1 | today/cloud/production hub ตอบ `service_auth_unavailable` บน hosted → backend รองรับ scoped owner auth และหน้าใช้งานได้ | blocked | claude | `DOCPACK/02-architecture.md` context diagram; `README.md` §Authentication และ Vercel |
+| G1 | cloud/production hub ตอบ `service_auth_unavailable` บน hosted → backend รองรับ scoped owner auth และหน้าใช้งานได้ (หน้า `/today` redirect ไป `/tasks` ที่อ่านจาก Tasks cell แล้ว; Today API เดิมเลิกใช้ ไม่อยู่ในงานนี้) | blocked | claude | `DOCPACK/02-architecture.md` context diagram; `README.md` §Authentication และ Vercel |
 | G2 | ไม่มี browser E2E ของ owner journey (login Google จริง) → ชุด browser acceptance | todo | claude | `DOCPACK/08-rtm.md` GAP-01 |
 | G3 | hosted smoke/UAT ยังไม่ได้รัน → รัน smoke/UAT และเก็บหลักฐาน | todo | owner | `DOCPACK/08-rtm.md` GAP-05 |
 | G4 | ไม่มี NFR วัดได้ (latency, uptime, RTO, RPO) → owner กำหนดเป้าหมาย | decide | owner | `DOCPACK/08-rtm.md` GAP-06 |
-| G5 | parity test JWT Web ↔ Python ถูกข้ามใน CI → ตั้ง `SERVICE_AUTH_PYTHON` ใน CI | todo | claude | `DOCPACK/08-rtm.md` GAP-03 |
-| G6 | PostHog insight check และ dashboard "Life Dashboard pilot" ยังไม่ทำ → สร้าง dashboard, เก็บ baseline, ทำ outcome review | doing | owner | `docs/measurement/GO-LIVE.md` steps 5-8; `docs/measurement/OUTCOME-REVIEW-001.md` |
+| G5 | parity test JWT Web ↔ Python ถูกข้ามใน CI → ติดตั้งแพ็กเกจ `service_auth` ใน Python environment ของ CI แล้วตั้ง `SERVICE_AUTH_PYTHON` ชี้ไปยัง interpreter นั้น (ตั้งตัวแปรอย่างเดียว test จะล้มตอน import) | todo | claude | `DOCPACK/08-rtm.md` GAP-03 |
+| G6 | PostHog insight check และ dashboard "Life Dashboard pilot" ยังไม่ทำ; OR-301 จบแล้ว (owner อนุมัติ 2026-11-26: ผล not measurable) → ยืนยัน consent และ `$pageview` บนอุปกรณ์ owner, สร้าง dashboard, เก็บ baseline และทำ outcome review ที่ OR-302 (2026-12-25) | doing | owner | `docs/measurement/GO-LIVE.md` steps 5-8; `docs/measurement/OUTCOME-REVIEW-001.md` |
 
 ## Open questions
 
